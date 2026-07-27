@@ -1,0 +1,16 @@
+{
+  "api_key": "your-api-key",
+  "admin_username": "admin",
+  "admin_password": "admin",
+  "admin_session_secret": "adobe2api-change-this-session-secret",
+  "proxy": "",
+  "use_proxy": false,
+  "generate_timeout": 300,
+  "refresh_interval_hours": 15,
+  "retry_enabled": true,
+  "retry_max_attempts": 3,
+  "retry_backoff_seconds": 1.0,
+  "retry_on_status_codes": [429, 451, 500, 502, 503, 504],
+  "retry_on_error_types": ["timeout", "connection", "proxy"],
+  "token_rotation_strategy": "round_robin"
+}

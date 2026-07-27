@@ -1,0 +1,18 @@
+version: "3.8"
+
+services:
+  adobe2api:
+    build: .
+    container_name: adobe2api
+    ports:
+      - "6001:6001"
+    environment:
+      - TZ=Asia/Shanghai
+      - PORT=6001
+      - ADOBE_API_KEY=clio-playground-web
+    volumes:
+      # 持久化生成数据
+      - ./data:/app/data
+      # 持久化配置数据
+      - ./config:/app/config
+    restart: unless-stopped

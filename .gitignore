@@ -1,0 +1,16 @@
+data/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+.env
+.env.*
+*.log
+*-patch.zip
+config/config.json
+config/tokens.json
+config/refresh_profile.json
+tokens.json

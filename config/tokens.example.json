@@ -1,0 +1,9 @@
+[
+  {
+    "id": "example01",
+    "value": "YOUR_ADOBE_IMS_ACCESS_TOKEN",
+    "status": "active",
+    "fails": 0,
+    "added_at": 0
+  }
+]

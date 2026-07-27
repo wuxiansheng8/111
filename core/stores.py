@@ -1,0 +1,366 @@
+import json
+import threading
+import time
+import uuid
+from collections import deque
+from dataclasses import asdict, dataclass
+from pathlib import Path
+from typing import Optional
+
+
+@dataclass
+class JobRecord:
+    id: str
+    prompt: str
+    aspect_ratio: str
+    status: str = "queued"
+    progress: float = 0.0
+    image_url: Optional[str] = None
+    error: Optional[str] = None
+    created_at: float = 0.0
+    updated_at: float = 0.0
+
+
+class JobStore:
+    def __init__(self, max_items: int = 200) -> None:
+        self._items: dict[str, JobRecord] = {}
+        self._lock = threading.Lock()
+        self._max_items = max_items
+
+    def _cleanup(self):
+        if len(self._items) > self._max_items:
+            sorted_items = sorted(self._items.values(), key=lambda x: x.created_at)
+            for item in sorted_items[:50]:
+                self._items.pop(item.id, None)
+
+    def create(self, prompt: str, aspect_ratio: str) -> JobRecord:
+        now = time.time()
+        item = JobRecord(
+            id=uuid.uuid4().hex,
+            prompt=prompt,
+            aspect_ratio=aspect_ratio,
+            created_at=now,
+            updated_at=now,
+        )
+        with self._lock:
+            self._cleanup()
+            self._items[item.id] = item
+        return item
+
+    def get(self, job_id: str) -> Optional[JobRecord]:
+        with self._lock:
+            return self._items.get(job_id)
+
+    def update(self, job_id: str, **kwargs) -> None:
+        with self._lock:
+            item = self._items.get(job_id)
+            if not item:
+                return
+            for k, v in kwargs.items():
+                setattr(item, k, v)
+            item.updated_at = time.time()
+
+
+@dataclass
+class RequestLogRecord:
+    id: str
+    ts: float
+    method: str
+    path: str
+    status_code: int
+    duration_sec: int
+    operation: str
+    preview_url: Optional[str] = None
+    preview_kind: Optional[str] = None
+    model: Optional[str] = None
+    prompt_preview: Optional[str] = None
+    error: Optional[str] = None
+    error_code: Optional[str] = None
+    task_status: Optional[str] = None
+    task_progress: Optional[float] = None
+    upstream_job_id: Optional[str] = None
+    retry_after: Optional[int] = None
+    token_id: Optional[str] = None
+    token_account_name: Optional[str] = None
+    token_account_email: Optional[str] = None
+    token_source: Optional[str] = None
+    token_attempt: Optional[int] = None
+
+
+class RequestLogStore:
+    def __init__(self, file_path: Path, max_items: int = 500) -> None:
+        self._file_path = file_path
+        self._lock = threading.Lock()
+        self._max_items = max_items
+        self._append_since_truncate = 0
+        self._truncate_check_interval = 200
+        self._file_path.parent.mkdir(parents=True, exist_ok=True)
+        if not self._file_path.exists():
+            self._file_path.touch()
+
+    def _truncate_to_max_locked(self) -> None:
+        tail: deque[str] = deque(maxlen=self._max_items)
+        total = 0
+        with self._file_path.open("r", encoding="utf-8") as f:
+            for line in f:
+                total += 1
+                tail.append(line)
+        if total <= self._max_items:
+            return
+        with self._file_path.open("w", encoding="utf-8") as f:
+            f.writelines(tail)
+
+    def _append_payload_locked(self, payload: dict) -> None:
+        with self._file_path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(payload, ensure_ascii=False) + "\n")
+        self._append_since_truncate += 1
+        if self._append_since_truncate >= self._truncate_check_interval:
+            self._truncate_to_max_locked()
+            self._append_since_truncate = 0
+
+    def add(self, item: RequestLogRecord) -> None:
+        payload = asdict(item)
+        self.add_payload(payload)
+
+    def add_payload(self, payload: dict) -> None:
+        if not isinstance(payload, dict):
+            return
+        with self._lock:
+            self._append_payload_locked(payload)
+
+    def upsert(self, item_id: str, payload: dict) -> None:
+        if not item_id:
+            return
+        if not isinstance(payload, dict):
+            return
+        item = {"id": item_id}
+        item.update(payload)
+        with self._lock:
+            self._append_payload_locked(item)
+
+    def list(self, limit: int = 20, page: int = 1) -> tuple[list[dict], int]:
+        safe_limit = min(max(int(limit or 20), 1), 100)
+        safe_page = max(int(page or 1), 1)
+        window_size = safe_limit * safe_page
+        tail: deque[str] = deque(maxlen=window_size)
+        total = 0
+        with self._lock:
+            with self._file_path.open("r", encoding="utf-8") as f:
+                for line in f:
+                    total += 1
+                    tail.append(line)
+        if total <= 0:
+            return [], 0
+
+        tail_lines = list(tail)
+        available = len(tail_lines)
+        start_from_end = (safe_page - 1) * safe_limit
+        if start_from_end >= available:
+            return [], total
+
+        end_idx = available - start_from_end
+        start_idx = max(0, end_idx - safe_limit)
+        selected = tail_lines[start_idx:end_idx]
+        data: list[dict] = []
+        for line in reversed(selected):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                item = json.loads(line)
+                if isinstance(item, dict):
+                    data.append(item)
+            except Exception:
+                continue
+        return data, total
+
+    def stats(
+        self,
+        start_ts: Optional[float] = None,
+        end_ts: Optional[float] = None,
+    ) -> dict:
+        total_requests = 0
+        failed_requests = 0
+        generated_images = 0
+        generated_videos = 0
+        in_progress_requests = 0
+
+        with self._lock:
+            with self._file_path.open("r", encoding="utf-8") as f:
+                for line in f:
+                    raw = line.strip()
+                    if not raw:
+                        continue
+                    try:
+                        item = json.loads(raw)
+                    except Exception:
+                        continue
+                    if not isinstance(item, dict):
+                        continue
+
+                    try:
+                        ts_val = float(item.get("ts") or 0)
+                    except Exception:
+                        ts_val = 0.0
+                    if start_ts is not None and ts_val < float(start_ts):
+                        continue
+                    if end_ts is not None and ts_val > float(end_ts):
+                        continue
+
+                    total_requests += 1
+
+                    try:
+                        status_code = int(item.get("status_code") or 0)
+                    except Exception:
+                        status_code = 0
+                    if status_code >= 400:
+                        failed_requests += 1
+
+                    task_status = str(item.get("task_status") or "").upper()
+                    if task_status == "IN_PROGRESS":
+                        in_progress_requests += 1
+
+                    preview_kind = str(item.get("preview_kind") or "").strip().lower()
+                    if 200 <= status_code < 300:
+                        if preview_kind == "image":
+                            generated_images += 1
+                        elif preview_kind == "video":
+                            generated_videos += 1
+
+        return {
+            "total_requests": total_requests,
+            "failed_requests": failed_requests,
+            "generated_images": generated_images,
+            "generated_videos": generated_videos,
+            "generated_total": generated_images + generated_videos,
+            "in_progress_requests": in_progress_requests,
+        }
+
+    def clear(self) -> None:
+        with self._lock:
+            with self._file_path.open("w", encoding="utf-8") as f:
+                f.write("")
+            self._append_since_truncate = 0
+
+
+@dataclass
+class ErrorDetailRecord:
+    code: str
+    ts: float
+    message: str
+    error_type: Optional[str] = None
+    status_code: Optional[int] = None
+    operation: Optional[str] = None
+    method: Optional[str] = None
+    path: Optional[str] = None
+    log_id: Optional[str] = None
+    model: Optional[str] = None
+    prompt_preview: Optional[str] = None
+    task_status: Optional[str] = None
+    task_progress: Optional[float] = None
+    upstream_job_id: Optional[str] = None
+    token_id: Optional[str] = None
+    token_account_name: Optional[str] = None
+    token_account_email: Optional[str] = None
+    token_source: Optional[str] = None
+    token_attempt: Optional[int] = None
+    exception_class: Optional[str] = None
+    traceback: Optional[str] = None
+
+
+class ErrorDetailStore:
+    def __init__(self, file_path: Path, max_items: int = 5000) -> None:
+        self._file_path = file_path
+        self._lock = threading.Lock()
+        self._max_items = max(200, int(max_items or 5000))
+        self._file_path.parent.mkdir(parents=True, exist_ok=True)
+        if not self._file_path.exists():
+            self._file_path.touch()
+
+    def _truncate_to_max_locked(self) -> None:
+        with self._file_path.open("r", encoding="utf-8") as f:
+            lines = f.readlines()
+        if len(lines) <= self._max_items:
+            return
+        kept = lines[-self._max_items :]
+        with self._file_path.open("w", encoding="utf-8") as f:
+            f.writelines(kept)
+
+    def add(self, item: ErrorDetailRecord) -> None:
+        payload = asdict(item)
+        with self._lock:
+            with self._file_path.open("a", encoding="utf-8") as f:
+                f.write(json.dumps(payload, ensure_ascii=False) + "\n")
+            self._truncate_to_max_locked()
+
+    def get(self, code: str) -> Optional[dict]:
+        target = str(code or "").strip()
+        if not target:
+            return None
+        with self._lock:
+            with self._file_path.open("r", encoding="utf-8") as f:
+                lines = f.readlines()
+
+        for line in reversed(lines):
+            raw = line.strip()
+            if not raw:
+                continue
+            try:
+                item = json.loads(raw)
+            except Exception:
+                continue
+            if isinstance(item, dict) and str(item.get("code") or "") == target:
+                return item
+        return None
+
+
+class LiveRequestStore:
+    def __init__(self, max_items: int = 2000) -> None:
+        self._lock = threading.Lock()
+        self._items: dict[str, dict] = {}
+        self._max_items = max(100, int(max_items or 2000))
+
+    def upsert(self, item_id: str, payload: dict) -> None:
+        iid = str(item_id or "").strip()
+        if not iid or not isinstance(payload, dict):
+            return
+        with self._lock:
+            old = self._items.get(iid, {})
+            merged = dict(old)
+            merged.update(payload)
+            merged["id"] = iid
+            if not merged.get("ts"):
+                merged["ts"] = time.time()
+            self._items[iid] = merged
+            if len(self._items) > self._max_items:
+                pairs = sorted(
+                    self._items.items(),
+                    key=lambda x: float((x[1] or {}).get("ts") or 0),
+                )
+                overflow = len(self._items) - self._max_items
+                for key, _ in pairs[:overflow]:
+                    self._items.pop(key, None)
+
+    def remove(self, item_id: str) -> None:
+        iid = str(item_id or "").strip()
+        if not iid:
+            return
+        with self._lock:
+            self._items.pop(iid, None)
+
+    def list(self, limit: int = 200) -> list[dict]:
+        safe_limit = min(max(int(limit or 200), 1), 1000)
+        with self._lock:
+            data = list(self._items.values())
+        data.sort(key=lambda x: float((x or {}).get("ts") or 0), reverse=True)
+        return data[:safe_limit]
+
+    def count_in_progress(self) -> int:
+        with self._lock:
+            vals = list(self._items.values())
+        total = 0
+        for item in vals:
+            status = str((item or {}).get("task_status") or "").upper()
+            if status == "IN_PROGRESS":
+                total += 1
+        return total
