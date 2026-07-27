@@ -305,24 +305,10 @@ document.addEventListener("DOMContentLoaded", () => {
     return String(payload?.error?.message || payload?.detail || `生成失败（HTTP ${status}）`);
   }
 
-  async function generateVideo() {
-    if (state.running) return;
-    const prompt = ui.prompt.value.trim();
-    if (!prompt) {
-      setFormMessage("请先填写提示词", "error");
-      ui.prompt.focus();
-      return;
-    }
-    const selectedModel = modelId();
-    if (!state.models.has(selectedModel)) {
-      setFormMessage("当前参数对应的模型不可用", "error");
-      return;
-    }
-
+  function beginGeneration() {
     state.running = true;
     state.startedAt = Date.now();
     state.runId += 1;
-    const runId = state.runId;
     ui.generateBtn.disabled = true;
     ui.downloadBtn.hidden = true;
     ui.resultVideo.hidden = true;
@@ -333,26 +319,80 @@ document.addEventListener("DOMContentLoaded", () => {
     setFormMessage("请求已提交，请保持页面打开", "");
     setProgress(5, "正在准备", "正在读取参考素材", true);
     ui.elapsedTime.textContent = "00:00";
+  }
+
+  async function buildRequestBody(prompt, selectedModel) {
+    const content = [{ type: "text", text: prompt }];
+    for (const item of state.files) {
+      const dataUrl = await fileToDataUrl(item.file);
+      content.push({
+        type: `${item.kind}_url`,
+        [`${item.kind}_url`]: { url: dataUrl },
+      });
+    }
+
+    const body = {
+      model: selectedModel,
+      messages: [{ role: "user", content }],
+      generate_audio: ui.generateAudio.checked,
+      reference_mode: state.files.length ? "media" : "frame",
+    };
+    const negativePrompt = ui.negativePrompt.value.trim();
+    if (negativePrompt) body.negative_prompt = negativePrompt;
+    return body;
+  }
+
+  function showGenerationSuccess(videoUrl) {
+    stopPolling();
+    ui.progressBar.classList.remove("indeterminate");
+    setProgress(100, "生成完成", "视频已保存到服务器");
+    ui.elapsedTime.textContent = elapsedLabel();
+    ui.emptyState.hidden = true;
+    ui.resultVideo.src = videoUrl;
+    ui.resultVideo.hidden = false;
+    ui.downloadBtn.href = videoUrl;
+    ui.downloadBtn.hidden = false;
+    setStatus("success", "已完成");
+    setFormMessage("视频生成成功", "success");
+    showToast("视频生成成功");
+    ui.resultVideo.load();
+  }
+
+  function showGenerationFailure(error) {
+    const message = error?.message || "请求失败";
+    stopPolling();
+    setStatus("failed", "失败");
+    ui.progressBar.classList.remove("indeterminate");
+    ui.progressLabel.textContent = "生成失败";
+    ui.progressDetail.textContent = message;
+    ui.elapsedTime.textContent = elapsedLabel();
+    setFormMessage(message, "error");
+    showToast(message, true);
+  }
+
+  async function generateVideo() {
+    if (state.running) return;
+    const prompt = ui.prompt.value.trim();
+    if (!prompt) {
+      setFormMessage("请先填写提示词", "error");
+      ui.prompt.focus();
+      return;
+    }
+    if (state.activeAccounts < 1) {
+      setFormMessage("请先在管理后台添加可用账号", "error");
+      return;
+    }
+    const selectedModel = modelId();
+    if (!state.models.has(selectedModel)) {
+      setFormMessage("当前参数对应的模型不可用", "error");
+      return;
+    }
+
+    beginGeneration();
+    const runId = state.runId;
 
     try {
-      const content = [{ type: "text", text: prompt }];
-      for (const item of state.files) {
-        const dataUrl = await fileToDataUrl(item.file);
-        content.push({
-          type: `${item.kind}_url`,
-          [`${item.kind}_url`]: { url: dataUrl },
-        });
-      }
-
-      const requestBody = {
-        model: selectedModel,
-        messages: [{ role: "user", content }],
-        generate_audio: ui.generateAudio.checked,
-        reference_mode: state.files.length ? "media" : "frame",
-      };
-      const negativePrompt = ui.negativePrompt.value.trim();
-      if (negativePrompt) requestBody.negative_prompt = negativePrompt;
-
+      const requestBody = await buildRequestBody(prompt, selectedModel);
       const promptPrefix = prompt.replace(/[\r\n]+/g, " ").slice(0, 70);
       pollProgress(runId, selectedModel, promptPrefix);
 
@@ -366,29 +406,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
       const videoUrl = extractVideoUrl(payload);
       if (!videoUrl) throw new Error("任务已完成，但响应中没有视频地址");
-
-      stopPolling();
-      ui.progressBar.classList.remove("indeterminate");
-      setProgress(100, "生成完成", "视频已保存到服务器");
-      ui.elapsedTime.textContent = elapsedLabel();
-      ui.emptyState.hidden = true;
-      ui.resultVideo.src = videoUrl;
-      ui.resultVideo.hidden = false;
-      ui.downloadBtn.href = videoUrl;
-      ui.downloadBtn.hidden = false;
-      setStatus("success", "已完成");
-      setFormMessage("视频生成成功", "success");
-      showToast("视频生成成功");
-      ui.resultVideo.load();
+      showGenerationSuccess(videoUrl);
     } catch (error) {
-      stopPolling();
-      setStatus("failed", "失败");
-      ui.progressBar.classList.remove("indeterminate");
-      ui.progressLabel.textContent = "生成失败";
-      ui.progressDetail.textContent = error.message || "请求失败";
-      ui.elapsedTime.textContent = elapsedLabel();
-      setFormMessage(error.message || "请求失败", "error");
-      showToast(error.message || "请求失败", true);
+      showGenerationFailure(error);
     } finally {
       state.running = false;
       updateAvailability();
