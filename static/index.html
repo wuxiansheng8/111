@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/styles.css?v=20260728-2" />
+  <link rel="stylesheet" href="/static/styles.css?v=20260728-3" />
 </head>
 <body>
   <header class="topbar">
@@ -126,6 +126,16 @@
         <p id="progressDetail">正在准备参考素材</p>
       </div>
 
+      <section class="task-panel" aria-label="视频任务">
+        <div class="task-heading">
+          <h2>任务队列</h2>
+          <span id="taskCount">0 个任务</span>
+        </div>
+        <div id="taskList" class="task-list">
+          <p class="task-empty">提交后可继续添加任务</p>
+        </div>
+      </section>
+
       <div class="composer">
         <label for="prompt">提示词</label>
         <div class="composer-row">
@@ -144,6 +154,6 @@
   </main>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script src="/static/app.js?v=20260728-2"></script>
+  <script src="/static/app.js?v=20260728-3"></script>
 </body>
 </html>

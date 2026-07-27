@@ -17,6 +17,7 @@ from core.entity_store import entity_store
 def build_generation_router(
     *,
     store,
+    video_task_queue,
     token_manager,
     client,
     generated_dir: Path,
@@ -210,6 +211,51 @@ def build_generation_router(
                 }
             )
         return {"object": "list", "data": data}
+
+    @router.post("/v1/videos", status_code=202)
+    def create_video_task(data: dict, request: Request):
+        require_service_api_key(request)
+        model_id = str(data.get("model") or "").strip()
+        if model_id not in video_model_catalog:
+            raise HTTPException(status_code=400, detail="unsupported video model")
+        prompt = extract_prompt_from_messages(data.get("messages") or [])
+        if not prompt:
+            prompt = str(data.get("prompt") or "").strip()
+        if not prompt:
+            raise HTTPException(status_code=400, detail="messages or prompt is required")
+
+        forwarded_host = str(request.headers.get("x-forwarded-host") or "").strip()
+        forwarded_proto = str(request.headers.get("x-forwarded-proto") or "").strip()
+        public_context = {
+            "host": forwarded_host or str(request.url.netloc),
+            "proto": forwarded_proto or str(request.url.scheme or "http"),
+            "prefix": str(request.headers.get("x-forwarded-prefix") or "").strip(),
+        }
+        task = video_task_queue.submit(data, public_context)
+        return {"task_id": task["id"], **task}
+
+    @router.get("/v1/videos")
+    def list_video_tasks(request: Request, limit: int = 100):
+        require_service_api_key(request)
+        return {"object": "list", "data": video_task_queue.list(limit=limit)}
+
+    @router.get("/v1/videos/{task_id}")
+    def get_video_task(task_id: str, request: Request):
+        require_service_api_key(request)
+        task = video_task_queue.get(task_id)
+        if not task:
+            raise HTTPException(status_code=404, detail="task not found")
+        return task
+
+    @router.delete("/v1/videos/{task_id}")
+    def cancel_video_task(task_id: str, request: Request):
+        require_service_api_key(request)
+        task = video_task_queue.cancel(task_id)
+        if not task:
+            raise HTTPException(status_code=404, detail="task not found")
+        if task.get("status") != "cancelled":
+            raise HTTPException(status_code=409, detail="only queued tasks can be cancelled")
+        return task
 
     @router.post("/v1/images/generations")
     def openai_generate(data: dict, request: Request):
@@ -633,6 +679,15 @@ def build_generation_router(
             kling_bound_refs: list[dict] | None = None
             if video_engine == "kling-o3":
                 entity_account_id, kling_bound_refs = _resolve_entity_bindings(prompt)
+            queue_account_id = ""
+            client_host = str(getattr(request.client, "host", "") or "").strip()
+            if client_host in {"127.0.0.1", "::1", "localhost"}:
+                queue_account_id = str(data.get("_queue_account_id") or "").strip()
+            if entity_account_id and queue_account_id and entity_account_id != queue_account_id:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Kling entity belongs to a different queued account",
+                )
             input_images = load_input_images(data.get("messages") or [])
             input_media = (
                 load_input_media(data.get("messages") or [])
@@ -876,15 +931,17 @@ def build_generation_router(
                 return response_payload
 
             token_selector = None
-            if entity_account_id:
+            selected_account_id = entity_account_id or queue_account_id
+            if selected_account_id:
                 token_selector = lambda: token_manager.get_available_for_account(
-                    entity_account_id, strategy=client.token_rotation_strategy
+                    selected_account_id, strategy=client.token_rotation_strategy
                 )
             return run_with_token_retries(
                 request=request,
                 operation_name="chat.completions",
                 run_once=_run_once,
                 token_selector=token_selector,
+                allow_token_reuse=bool(queue_account_id),
             )
         except quota_error_cls:
             error_code = str(

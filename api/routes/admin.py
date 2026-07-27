@@ -212,6 +212,7 @@ def build_admin_router(
             "summary": {
                 "total": total_count,
                 "active": active_count,
+                "active_accounts": len(token_manager.list_active_account_tokens()),
                 "credits_available_total": credits_available_total,
             },
         }

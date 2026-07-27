@@ -8,10 +8,11 @@ import traceback
 import base64
 import binascii
 import io
+import re
 from dataclasses import asdict
 from pathlib import Path
 from typing import Optional, Any, Callable
-from urllib.parse import unquote_to_bytes
+from urllib.parse import unquote_to_bytes, urlsplit
 
 import requests
 from fastapi import FastAPI, HTTPException, Request
@@ -37,6 +38,7 @@ from core.adobe_client import (
     UpstreamTemporaryError,
 )
 from core.token_mgr import token_manager
+from core.video_queue import VideoTaskQueue
 from core.config_mgr import config_manager
 from core.refresh_mgr import refresh_manager
 from core.stores import (
@@ -601,6 +603,7 @@ def _run_with_token_retries(
     run_once: Callable[[str], Any],
     set_request_error_detail: Optional[Callable[..., str]] = None,
     token_selector: Optional[Callable[[], Optional[str]]] = None,
+    allow_token_reuse: bool = False,
 ) -> Any:
     max_attempts = client.retry_max_attempts if client.retry_enabled else 1
     max_attempts = max(1, int(max_attempts))
@@ -624,7 +627,7 @@ def _run_with_token_retries(
             candidate = str(candidate or "").strip()
             if not candidate:
                 break
-            if candidate not in tried_tokens:
+            if candidate not in tried_tokens or allow_token_reuse:
                 token = candidate
                 break
             if fetch_attempts >= max(1, len(tried_tokens) + 1):
@@ -1405,6 +1408,74 @@ def _sse_chat_stream(payload: dict):
     yield "data: [DONE]\n\n"
 
 
+def _run_queued_video(payload: dict, account: dict, public_context: dict) -> dict:
+    queued_payload = dict(payload)
+    queued_payload["_queue_account_id"] = str(account.get("account_id") or "")
+    headers = {"Content-Type": "application/json"}
+    api_key = str(config_manager.get("api_key", "") or "").strip()
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    public_host = str(public_context.get("host") or "").strip()
+    public_proto = str(public_context.get("proto") or "http").strip()
+    public_prefix = str(public_context.get("prefix") or "").strip()
+    if public_host:
+        headers["X-Forwarded-Host"] = public_host
+        headers["X-Forwarded-Proto"] = public_proto
+        if public_prefix:
+            headers["X-Forwarded-Prefix"] = public_prefix
+
+    port = int(os.getenv("PORT", "6001"))
+    timeout = max(int(getattr(client, "generate_timeout", 600) or 600) + 300, 900)
+    response = requests.post(
+        f"http://127.0.0.1:{port}/v1/chat/completions",
+        headers=headers,
+        json=queued_payload,
+        timeout=timeout,
+    )
+    try:
+        body = response.json()
+    except Exception:
+        body = {}
+    if response.status_code >= 400:
+        error = body.get("error") if isinstance(body, dict) else None
+        if isinstance(error, dict):
+            message = str(error.get("message") or "").strip()
+        else:
+            message = str(body.get("detail") or "").strip() if isinstance(body, dict) else ""
+        raise RuntimeError(message or f"视频生成失败（HTTP {response.status_code}）")
+
+    content = str(
+        (((body.get("choices") or [{}])[0].get("message") or {}).get("content") or "")
+        if isinstance(body, dict)
+        else ""
+    )
+    match = re.search(r"<video[^>]+src=['\"]([^'\"]+)['\"]", content, re.I)
+    if not match:
+        match = re.search(r"(https?://[^\s'\"<>]+\.(?:mp4|mov|webm))", content, re.I)
+    if not match:
+        raise RuntimeError("任务已完成，但响应中没有视频地址")
+    result_url = match.group(1)
+    parsed_url = urlsplit(result_url)
+    if parsed_url.hostname in {"127.0.0.1", "localhost", "::1"} and public_host:
+        prefix = f"/{public_prefix.strip('/')}" if public_prefix.strip("/") else ""
+        result_url = f"{public_proto}://{public_host}{prefix}{parsed_url.path}"
+        if parsed_url.query:
+            result_url = f"{result_url}?{parsed_url.query}"
+    return {"result_url": result_url}
+
+
+video_task_queue = VideoTaskQueue(
+    data_dir=DATA_DIR / "video_tasks",
+    account_provider=token_manager.list_active_account_tokens,
+    task_runner=_run_queued_video,
+)
+
+
+@app.on_event("startup")
+def _start_video_task_queue() -> None:
+    video_task_queue.start()
+
+
 _reconcile_generated_storage(force=True)
 
 
@@ -1427,6 +1498,7 @@ app.include_router(
 app.include_router(
     build_generation_router(
         store=store,
+        video_task_queue=video_task_queue,
         token_manager=token_manager,
         client=client,
         generated_dir=GENERATED_DIR,

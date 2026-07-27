@@ -278,8 +278,13 @@ class TokenManager:
                 t
                 for t in self.tokens
                 if t.get("status") in {"active", "error"}
-                and str(t.get("account_id") or self.account_id_from_token(t.get("value") or ""))
-                == aid
+                and (
+                    str(
+                        t.get("account_id")
+                        or self.account_id_from_token(t.get("value") or "")
+                    ).strip()
+                    or f"token:{str(t.get('id') or '').strip()}"
+                ) == aid
             ]
             if not active:
                 return None
@@ -299,7 +304,8 @@ class TokenManager:
                     continue
                 value = str(t.get("value") or "").strip()
                 aid = str(t.get("account_id") or self.account_id_from_token(value)).strip()
-                if not value or not aid or aid in seen:
+                aid = aid or f"token:{str(t.get('id') or '').strip()}"
+                if not value or aid == "token:" or aid in seen:
                     continue
                 seen.add(aid)
                 items.append(

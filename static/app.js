@@ -16,10 +16,13 @@ document.addEventListener("DOMContentLoaded", () => {
     negativePrompt: document.getElementById("negativePrompt"),
     prompt: document.getElementById("prompt"),
     generateBtn: document.getElementById("generateBtn"),
+    generateLabel: document.querySelector("#generateBtn span:last-child"),
     requestSummary: document.getElementById("requestSummary"),
     formMessage: document.getElementById("formMessage"),
     resultStage: document.getElementById("resultStage"),
     emptyState: document.getElementById("emptyState"),
+    emptyTitle: document.querySelector("#emptyState strong"),
+    emptyDetail: document.querySelector("#emptyState span:last-child"),
     resultVideo: document.getElementById("resultVideo"),
     resultTitle: document.getElementById("resultTitle"),
     statusBadge: document.getElementById("statusBadge"),
@@ -29,6 +32,8 @@ document.addEventListener("DOMContentLoaded", () => {
     progressBar: document.getElementById("progressBar"),
     progressDetail: document.getElementById("progressDetail"),
     elapsedTime: document.getElementById("elapsedTime"),
+    taskList: document.getElementById("taskList"),
+    taskCount: document.getElementById("taskCount"),
     toast: document.getElementById("toast"),
   };
 
@@ -83,10 +88,10 @@ document.addEventListener("DOMContentLoaded", () => {
     apiKey: "",
     models: new Set(),
     activeAccounts: 0,
-    running: false,
-    startedAt: 0,
+    submitting: false,
+    tasks: new Map(),
+    selectedTaskId: "",
     pollTimer: null,
-    runId: 0,
   };
 
   let toastTimer = null;
@@ -144,7 +149,9 @@ document.addEventListener("DOMContentLoaded", () => {
     ui.requestSummary.textContent = `${profile.label} · ${state.duration} 秒 · ${state.ratio} · ${profile.resolution} · ${audioLabel}`;
     ui.resolution.textContent = profile.resolution;
     ui.advancedPanel.hidden = !profile.supportsNegativePrompt;
-    ui.resultStage.classList.toggle("portrait-stage", state.ratio === "9:16");
+    if (!state.selectedTaskId) {
+      ui.resultStage.classList.toggle("portrait-stage", state.ratio === "9:16");
+    }
     renderFiles();
     updateAvailability();
   }
@@ -159,7 +166,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const available = state.models.has(current);
     ui.modelAvailability.textContent = available ? "可用" : "不可用";
     ui.modelAvailability.className = `availability ${available ? "ready" : "error"}`;
-    ui.generateBtn.disabled = state.running || !available || state.activeAccounts < 1 || !filesFitProfile();
+    ui.generateBtn.disabled = state.submitting || !available || state.activeAccounts < 1 || !filesFitProfile();
   }
 
   function selectButton(buttons, activeButton) {
@@ -309,11 +316,14 @@ document.addEventListener("DOMContentLoaded", () => {
     ui.progressLabel.textContent = label;
     ui.progressDetail.textContent = detail;
     ui.progressBar.classList.toggle("indeterminate", indeterminate);
-    if (!indeterminate) ui.progressBar.style.width = `${Math.max(0, Math.min(100, Number(value) || 0))}%`;
+    if (indeterminate) ui.progressBar.style.removeProperty("width");
+    else ui.progressBar.style.width = `${Math.max(0, Math.min(100, Number(value) || 0))}%`;
   }
 
-  function elapsedLabel() {
-    const seconds = Math.max(0, Math.floor((Date.now() - state.startedAt) / 1000));
+  function elapsedLabel(task) {
+    const started = Number(task?.started_at || task?.created_at || Date.now() / 1000) * 1000;
+    const ended = Number(task?.completed_at || Date.now() / 1000) * 1000;
+    const seconds = Math.max(0, Math.floor((ended - started) / 1000));
     const minutes = Math.floor(seconds / 60).toString().padStart(2, "0");
     const remainder = (seconds % 60).toString().padStart(2, "0");
     return `${minutes}:${remainder}`;
@@ -324,68 +334,26 @@ document.addEventListener("DOMContentLoaded", () => {
     state.pollTimer = null;
   }
 
-  async function pollProgress(runId, selectedModel, promptPrefix) {
-    if (!state.running || runId !== state.runId) return;
-    ui.elapsedTime.textContent = elapsedLabel();
-    try {
-      const response = await adminFetch("/api/v1/logs/running?limit=100");
-      const body = await readJson(response);
-      const items = Array.isArray(body.items) ? body.items : [];
-      const startedSeconds = state.startedAt / 1000;
-      const match = items.find((item) => (
-        item.model === selectedModel
-        && Number(item.ts || 0) >= startedSeconds - 8
-        && String(item.prompt_preview || "").startsWith(promptPrefix)
-      ));
-      if (match) {
-        const progress = Number(match.task_progress || 0);
-        const hasProgress = progress > 0;
-        setProgress(
-          progress,
-          hasProgress ? `正在生成 ${Math.round(progress)}%` : "正在生成",
-          match.upstream_job_id ? "上游任务已创建" : "正在上传参考素材",
-          !hasProgress,
-        );
-      }
-    } catch (_) {
-      // The generation request remains authoritative; polling is best effort.
-    }
-    state.pollTimer = setTimeout(() => pollProgress(runId, selectedModel, promptPrefix), 2200);
-  }
-
-  function extractVideoUrl(payload) {
-    const content = String(payload?.choices?.[0]?.message?.content || "");
-    const srcMatch = content.match(/<video[^>]+src=['\"]([^'\"]+)['\"]/i);
-    if (srcMatch) return srcMatch[1];
-    const urlMatch = content.match(/https?:\/\/[^\s'\"<>]+\.(?:mp4|mov)/i);
-    return urlMatch ? urlMatch[0] : "";
-  }
-
   function responseError(payload, status) {
     return String(payload?.error?.message || payload?.detail || `生成失败（HTTP ${status}）`);
   }
 
-  function beginGeneration() {
-    const profile = activeProfile();
-    state.running = true;
-    state.startedAt = Date.now();
-    state.runId += 1;
-    ui.generateBtn.disabled = true;
-    ui.downloadBtn.hidden = true;
-    ui.resultVideo.hidden = true;
-    ui.resultVideo.removeAttribute("src");
-    ui.emptyState.hidden = false;
-    ui.resultTitle.textContent = `${profile.label} · ${state.duration} 秒`;
-    setStatus("running", "生成中");
-    setFormMessage("请求已提交，请保持页面打开", "");
-    setProgress(5, "正在准备", "正在读取参考素材", true);
-    ui.elapsedTime.textContent = "00:00";
+  function taskModelSummary(model) {
+    const profiles = Object.values(modelProfiles).sort((a, b) => b.prefix.length - a.prefix.length);
+    const profile = profiles.find((item) => String(model || "").startsWith(`${item.prefix}-`));
+    if (!profile) return String(model || "未知模型");
+    const suffix = String(model).slice(profile.prefix.length + 1);
+    const match = suffix.match(/^(\d+)s-(\d+)x(\d+)$/);
+    return match ? `${profile.label} · ${match[1]} 秒 · ${match[2]}:${match[3]}` : profile.label;
   }
 
   async function buildRequestBody(prompt, selectedModel) {
     const profile = activeProfile();
+    const files = [...state.files];
+    const generateAudio = ui.generateAudio.checked;
+    const negativePrompt = ui.negativePrompt.value.trim();
     const content = [{ type: "text", text: prompt }];
-    for (const item of state.files) {
+    for (const item of files) {
       const dataUrl = await fileToDataUrl(item.file);
       content.push({
         type: `${item.kind}_url`,
@@ -396,44 +364,160 @@ document.addEventListener("DOMContentLoaded", () => {
     const body = {
       model: selectedModel,
       messages: [{ role: "user", content }],
-      generate_audio: ui.generateAudio.checked,
-      reference_mode: profile.supportsMedia && state.files.length ? "media" : "frame",
+      generate_audio: generateAudio,
+      reference_mode: profile.supportsMedia && files.length ? "media" : "frame",
     };
-    const negativePrompt = ui.negativePrompt.value.trim();
     if (profile.supportsNegativePrompt && negativePrompt) body.negative_prompt = negativePrompt;
     return body;
   }
 
-  function showGenerationSuccess(videoUrl) {
-    stopPolling();
-    ui.progressBar.classList.remove("indeterminate");
-    setProgress(100, "生成完成", "视频已保存到服务器");
-    ui.elapsedTime.textContent = elapsedLabel();
-    ui.emptyState.hidden = true;
-    ui.resultVideo.src = videoUrl;
-    ui.resultVideo.hidden = false;
-    ui.downloadBtn.href = videoUrl;
-    ui.downloadBtn.hidden = false;
-    setStatus("success", "已完成");
-    setFormMessage("视频生成成功", "success");
-    showToast("视频生成成功");
-    ui.resultVideo.load();
+  function taskStatusLabel(task) {
+    if (task.status === "queued") return task.queue_position ? `排队第 ${task.queue_position} 位` : "排队中";
+    return {
+      running: "生成中",
+      succeeded: "已完成",
+      failed: "失败",
+      cancelled: "已取消",
+    }[task.status] || task.status;
   }
 
-  function showGenerationFailure(error) {
-    const message = error?.message || "请求失败";
+  function taskStatusClass(status) {
+    return { succeeded: "success", queued: "queued", running: "running" }[status] || "failed";
+  }
+
+  function showTask(task) {
+    if (!task) return;
+    const videoUrl = String(task.result_url || "");
+    ui.resultTitle.textContent = taskModelSummary(task.model);
+    ui.resultStage.classList.toggle("portrait-stage", String(task.model || "").endsWith("-9x16"));
+    ui.elapsedTime.textContent = elapsedLabel(task);
+    setStatus(taskStatusClass(task.status), taskStatusLabel(task));
+    ui.downloadBtn.hidden = true;
+    ui.resultVideo.hidden = true;
+    ui.resultVideo.removeAttribute("src");
+    ui.emptyState.hidden = false;
+
+    if (task.status === "succeeded" && videoUrl) {
+      setProgress(100, "生成完成", "视频已保存到服务器");
+      ui.emptyState.hidden = true;
+      ui.resultVideo.src = videoUrl;
+      ui.resultVideo.hidden = false;
+      ui.downloadBtn.href = videoUrl;
+      ui.downloadBtn.hidden = false;
+      ui.resultVideo.load();
+      return;
+    }
+    if (task.status === "running") {
+      ui.emptyTitle.textContent = "正在生成";
+      ui.emptyDetail.textContent = task.account_name ? `账号：${task.account_name}` : "已分配生成账号";
+      setProgress(task.progress || 5, "正在生成", ui.emptyDetail.textContent, true);
+      return;
+    }
+    if (task.status === "queued") {
+      ui.emptyTitle.textContent = "等待空闲账号";
+      ui.emptyDetail.textContent = taskStatusLabel(task);
+      setProgress(0, "排队中", ui.emptyDetail.textContent, true);
+      return;
+    }
+    const message = task.error || (task.status === "cancelled" ? "任务已取消" : "视频生成失败");
+    ui.emptyTitle.textContent = task.status === "cancelled" ? "任务已取消" : "生成失败";
+    ui.emptyDetail.textContent = message;
+    setProgress(0, ui.emptyTitle.textContent, message);
+  }
+
+  function selectTask(taskId) {
+    state.selectedTaskId = String(taskId || "");
+    renderTasks();
+    showTask(state.tasks.get(state.selectedTaskId));
+  }
+
+  async function cancelTask(taskId) {
+    const response = await fetch(`/v1/videos/${encodeURIComponent(taskId)}`, {
+      method: "DELETE",
+      headers: serviceHeaders(),
+    });
+    const body = await readJson(response);
+    if (!response.ok) throw new Error(responseError(body, response.status));
+    state.tasks.set(body.id, body);
+    renderTasks();
+    if (state.selectedTaskId === body.id) showTask(body);
+  }
+
+  function renderTasks() {
+    const tasks = Array.from(state.tasks.values()).sort((a, b) => Number(b.created_at || 0) - Number(a.created_at || 0));
+    const running = tasks.filter((task) => task.status === "running").length;
+    const queued = tasks.filter((task) => task.status === "queued").length;
+    ui.taskCount.textContent = `${tasks.length} 个任务${running ? ` · ${running} 生成中` : ""}${queued ? ` · ${queued} 排队` : ""}`;
+    ui.taskList.innerHTML = "";
+    if (!tasks.length) {
+      const empty = document.createElement("p");
+      empty.className = "task-empty";
+      empty.textContent = "提交后可继续添加任务";
+      ui.taskList.appendChild(empty);
+      return;
+    }
+
+    tasks.forEach((task) => {
+      const row = document.createElement("div");
+      row.className = `task-item${task.id === state.selectedTaskId ? " active" : ""}`;
+      row.addEventListener("click", () => selectTask(task.id));
+
+      const status = document.createElement("span");
+      status.className = `task-state ${task.status}`;
+      status.textContent = taskStatusLabel(task);
+      const info = document.createElement("div");
+      info.className = "task-info";
+      const model = document.createElement("strong");
+      model.textContent = taskModelSummary(task.model);
+      const prompt = document.createElement("span");
+      prompt.textContent = task.prompt_preview || "无提示词摘要";
+      info.append(model, prompt);
+      const actions = document.createElement("div");
+      actions.className = "task-actions";
+      if (task.status === "queued") {
+        const cancel = document.createElement("button");
+        cancel.type = "button";
+        cancel.className = "task-action cancel";
+        cancel.title = "取消排队";
+        cancel.setAttribute("aria-label", "取消排队");
+        cancel.textContent = "×";
+        cancel.addEventListener("click", async (event) => {
+          event.stopPropagation();
+          try {
+            await cancelTask(task.id);
+          } catch (error) {
+            showToast(error.message || "取消失败", true);
+          }
+        });
+        actions.appendChild(cancel);
+      }
+      row.append(status, info, actions);
+      ui.taskList.appendChild(row);
+    });
+  }
+
+  async function refreshTasks() {
     stopPolling();
-    setStatus("failed", "失败");
-    ui.progressBar.classList.remove("indeterminate");
-    ui.progressLabel.textContent = "生成失败";
-    ui.progressDetail.textContent = message;
-    ui.elapsedTime.textContent = elapsedLabel();
-    setFormMessage(message, "error");
-    showToast(message, true);
+    try {
+      const response = await fetch("/v1/videos?limit=100", { headers: serviceHeaders() });
+      const body = await readJson(response);
+      if (!response.ok) throw new Error(responseError(body, response.status));
+      const tasks = Array.isArray(body.data) ? body.data : [];
+      state.tasks = new Map(tasks.map((task) => [String(task.id), task]));
+      if (!state.selectedTaskId || !state.tasks.has(state.selectedTaskId)) {
+        state.selectedTaskId = String(tasks[0]?.id || "");
+      }
+      renderTasks();
+      if (state.selectedTaskId) showTask(state.tasks.get(state.selectedTaskId));
+    } catch (error) {
+      showToast(error.message || "任务状态读取失败", true);
+    } finally {
+      state.pollTimer = setTimeout(refreshTasks, 2500);
+    }
   }
 
   async function generateVideo() {
-    if (state.running) return;
+    if (state.submitting) return;
     const prompt = ui.prompt.value.trim();
     if (!prompt) {
       setFormMessage("请先填写提示词", "error");
@@ -454,15 +538,13 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-    beginGeneration();
-    const runId = state.runId;
-
+    state.submitting = true;
+    ui.generateLabel.textContent = "正在提交";
+    setFormMessage("正在上传参考素材", "");
+    updateAvailability();
     try {
       const requestBody = await buildRequestBody(prompt, selectedModel);
-      const promptPrefix = prompt.replace(/[\r\n]+/g, " ").slice(0, 70);
-      pollProgress(runId, selectedModel, promptPrefix);
-
-      const response = await fetch("/v1/chat/completions", {
+      const response = await fetch("/v1/videos", {
         method: "POST",
         headers: serviceHeaders(),
         body: JSON.stringify(requestBody),
@@ -470,13 +552,19 @@ document.addEventListener("DOMContentLoaded", () => {
       const payload = await readJson(response);
       if (!response.ok) throw new Error(responseError(payload, response.status));
 
-      const videoUrl = extractVideoUrl(payload);
-      if (!videoUrl) throw new Error("任务已完成，但响应中没有视频地址");
-      showGenerationSuccess(videoUrl);
+      state.tasks.set(String(payload.id), payload);
+      state.selectedTaskId = String(payload.id);
+      renderTasks();
+      showTask(payload);
+      setFormMessage("任务已提交，可以继续添加任务", "success");
+      showToast("任务已进入队列");
     } catch (error) {
-      showGenerationFailure(error);
+      const message = error?.message || "提交失败";
+      setFormMessage(message, "error");
+      showToast(message, true);
     } finally {
-      state.running = false;
+      state.submitting = false;
+      ui.generateLabel.textContent = "生成视频";
       updateAvailability();
     }
   }
@@ -496,7 +584,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const config = await readJson(configResponse);
       const tokenData = await readJson(tokensResponse);
       state.apiKey = String(config.api_key || "");
-      const activeCount = Number(tokenData?.summary?.active || 0);
+      const activeCount = Number(tokenData?.summary?.active_accounts ?? tokenData?.summary?.active ?? 0);
       state.activeAccounts = activeCount;
       ui.accountStatus.textContent = activeCount > 0 ? `${activeCount} 个账号可用` : "没有可用账号";
       ui.accountStatus.className = `account-status ${activeCount > 0 ? "ready" : "error"}`;
@@ -506,6 +594,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!modelsResponse.ok) throw new Error(responseError(modelsBody, modelsResponse.status));
       state.models = new Set((modelsBody.data || []).map((item) => String(item.id || "")));
       updateSummary();
+      refreshTasks();
       if (activeCount < 1) setFormMessage("请先在管理后台添加可用账号", "error");
     } catch (error) {
       ui.accountStatus.textContent = "连接失败";
