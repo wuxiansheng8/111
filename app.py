@@ -39,6 +39,7 @@ from core.adobe_client import (
 )
 from core.token_mgr import token_manager
 from core.video_queue import VideoTaskQueue
+from core.media_mentions import LoadedMedia, extract_media_sources
 from core.config_mgr import config_manager
 from core.refresh_mgr import refresh_manager
 from core.stores import (
@@ -947,42 +948,6 @@ def _extract_image_urls_from_messages(messages, max_items: int = 6) -> list[str]
     return urls
 
 
-def _extract_media_urls_from_messages(
-    messages, max_items: int = 6
-) -> list[tuple[str, str]]:
-    media: list[tuple[str, str]] = []
-    field_by_type = {
-        "image_url": "image_url",
-        "video_url": "video_url",
-        "audio_url": "audio_url",
-    }
-    if not isinstance(messages, list):
-        return media
-    for msg in reversed(messages):
-        if not isinstance(msg, dict) or msg.get("role") != "user":
-            continue
-        content = msg.get("content")
-        if not isinstance(content, list):
-            return media
-        for part in content:
-            if not isinstance(part, dict):
-                continue
-            media_type = str(part.get("type") or "")
-            field = field_by_type.get(media_type)
-            if not field:
-                continue
-            value = part.get(field)
-            if isinstance(value, dict):
-                value = value.get("url")
-            url = str(value or "").strip()
-            if url:
-                media.append((media_type.removesuffix("_url"), url))
-                if len(media) >= max_items:
-                    return media
-        return media
-    return media
-
-
 def _normalize_image_mime(mime_type: str) -> str:
     allowed = {"image/jpeg", "image/jpg", "image/png", "image/webp"}
     normalized = str(mime_type or "").lower()
@@ -1032,9 +997,9 @@ def _load_input_images(messages) -> list[tuple[bytes, str]]:
     return loaded
 
 
-def _load_input_media(messages) -> list[tuple[bytes, str, str]]:
-    media_urls = _extract_media_urls_from_messages(messages, max_items=13)
-    loaded: list[tuple[bytes, str, str]] = []
+def _load_input_media(messages) -> list[LoadedMedia]:
+    media_sources = extract_media_sources(messages, max_items=13)
+    loaded: list[LoadedMedia] = []
     defaults = {
         "image": "image/jpeg",
         "video": "video/mp4",
@@ -1060,7 +1025,9 @@ def _load_input_media(messages) -> list[tuple[bytes, str, str]]:
         },
     }
 
-    for media_type, media_url in media_urls:
+    for source in media_sources:
+        media_type = source.kind
+        media_url = source.url
         default_mime = defaults[media_type]
         if media_url.startswith("data:"):
             try:
@@ -1100,7 +1067,15 @@ def _load_input_media(messages) -> list[tuple[bytes, str, str]]:
                 status_code=400,
                 detail=f"{media_type} too large, max {max_mb}MB",
             )
-        loaded.append((media_bytes, normalized_mime, media_type))
+        loaded.append(
+            LoadedMedia(
+                content=media_bytes,
+                mime_type=normalized_mime,
+                kind=media_type,
+                mention_id=source.mention_id,
+                label=source.label,
+            )
+        )
     return loaded
 
 

@@ -1,5 +1,6 @@
 import { modelProfiles, sizeLimits, taskModelSummary } from "./studio-models.js?v=20260728-4";
 import { VideoTaskBoard } from "./task-board.js?v=20260728-4";
+import { createMentionId, insertMention, mentionLabel, mentionToken } from "./media-references.js?v=20260728-5";
 
 document.addEventListener("DOMContentLoaded", () => {
   const ui = {
@@ -34,6 +35,7 @@ document.addEventListener("DOMContentLoaded", () => {
     models: new Set(),
     activeAccounts: 0,
     submitting: false,
+    mediaSequences: { image: 0, video: 0, audio: 0 },
   };
 
   let toastTimer = null;
@@ -196,6 +198,14 @@ document.addEventListener("DOMContentLoaded", () => {
       meta.textContent = `${mediaTypeLabel(item.kind)} · ${sizeLabel(item.file.size)}`;
       info.append(name, meta);
 
+      const mention = document.createElement("button");
+      mention.type = "button";
+      mention.className = "mention-media";
+      mention.textContent = `@${mentionLabel(item)}`;
+      mention.title = `在提示词中引用 ${item.file.name}`;
+      mention.hidden = !activeProfile().supportsMedia;
+      mention.addEventListener("click", () => insertMention(ui.prompt, mentionToken(item)));
+
       const remove = document.createElement("button");
       remove.type = "button";
       remove.className = "remove-media";
@@ -208,7 +218,7 @@ document.addEventListener("DOMContentLoaded", () => {
         renderFiles();
       });
 
-      row.append(thumb, info, remove);
+      row.append(thumb, info, mention, remove);
       ui.mediaList.appendChild(row);
     });
     updateAvailability();
@@ -239,10 +249,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
       counts[kind] += 1;
       counts.total += 1;
+      const sequence = ++state.mediaSequences[kind];
       state.files.push({
         id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
         file,
         kind,
+        sequence,
+        mentionId: createMentionId(kind, sequence),
         previewUrl: URL.createObjectURL(file),
       });
     }
@@ -273,7 +286,11 @@ document.addEventListener("DOMContentLoaded", () => {
       const dataUrl = await fileToDataUrl(item.file);
       content.push({
         type: `${item.kind}_url`,
-        [`${item.kind}_url`]: { url: dataUrl },
+        [`${item.kind}_url`]: {
+          url: dataUrl,
+          mention_id: item.mentionId,
+          label: mentionLabel(item),
+        },
       });
     }
 

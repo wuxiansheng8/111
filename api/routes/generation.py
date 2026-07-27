@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from api.schemas import GenerateRequest
 from core.entity_store import entity_store
+from core.media_mentions import LoadedMedia
 
 
 def build_generation_router(
@@ -35,7 +36,7 @@ def build_generation_router(
     public_generated_url: Callable[[Request, str], str],
     resolve_video_options: Callable[[dict], tuple[bool, str, str]],
     load_input_images: Callable[[Any], list[tuple[bytes, str]]],
-    load_input_media: Callable[[Any], list[tuple[bytes, str, str]]],
+    load_input_media: Callable[[Any], list[LoadedMedia]],
     prepare_video_source_image: Callable[[bytes, str, str], tuple[bytes, str]],
     video_ext_from_meta: Callable[[dict], str],
     extract_prompt_from_messages: Callable[[Any], str],
@@ -693,13 +694,17 @@ def build_generation_router(
                 load_input_media(data.get("messages") or [])
                 if video_engine == "seedance2"
                 else [
-                    (image_bytes, image_mime, "image")
+                    LoadedMedia(
+                        content=image_bytes,
+                        mime_type=image_mime,
+                        kind="image",
+                    )
                     for image_bytes, image_mime in input_images
                 ]
             )
             if video_engine == "seedance2" and (
                 len(input_media) > 2
-                or any(kind != "image" for _, _, kind in input_media)
+                or any(media.kind != "image" for media in input_media)
             ):
                 video_reference_mode = "media"
             set_request_task_progress(
@@ -764,14 +769,12 @@ def build_generation_router(
                                     ),
                                 )
                     source_media_refs: list[dict] = []
-                    for media_bytes, media_mime, media_type in input_media[
-                        :max_video_inputs
-                    ]:
-                        upload_bytes = media_bytes
-                        upload_mime = media_mime
-                        if media_type == "image":
+                    for media in input_media[:max_video_inputs]:
+                        upload_bytes = media.content
+                        upload_mime = media.mime_type
+                        if media.kind == "image":
                             upload_bytes, upload_mime = prepare_video_source_image(
-                                media_bytes,
+                                media.content,
                                 ratio,
                                 video_resolution,
                             )
@@ -779,12 +782,17 @@ def build_generation_router(
                             token,
                             upload_bytes,
                             upload_mime,
-                            media_type=media_type,
+                            media_type=media.kind,
                         )
                         source_media_refs.append(
-                            {"id": media_id, "media_type": media_type}
+                            {
+                                "id": media_id,
+                                "media_type": media.kind,
+                                "mention_id": media.mention_id,
+                                "label": media.label,
+                            }
                         )
-                        if media_type == "image":
+                        if media.kind == "image":
                             source_image_ids.append(media_id)
 
                     def _video_progress_cb(update: dict):

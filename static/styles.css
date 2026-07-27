@@ -261,7 +261,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
   min-height: 52px;
   padding: 6px;
   display: grid;
-  grid-template-columns: 42px minmax(0, 1fr) 30px;
+  grid-template-columns: 42px minmax(0, 1fr) auto 30px;
   align-items: center;
   gap: 8px;
   border: 1px solid var(--line);
@@ -285,6 +285,18 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .media-info strong, .media-info span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .media-info strong { font-size: 11px; }
 .media-info span { margin-top: 2px; color: var(--muted); font-size: 10px; }
+.mention-media {
+  min-width: 54px;
+  height: 28px;
+  padding: 0 7px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--accent);
+  font-size: 11px;
+  cursor: pointer;
+}
+.mention-media:hover { border-color: var(--accent); }
 .remove-media {
   width: 28px;
   height: 28px;

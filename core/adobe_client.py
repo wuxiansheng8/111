@@ -12,6 +12,7 @@ import requests
 
 from core.config_mgr import config_manager
 from core.models import build_image_payload_candidates
+from core.media_mentions import bind_seedance_mentions
 
 try:
     from curl_cffi.requests import Session as CurlSession
@@ -1275,8 +1276,6 @@ class AdobeClient:
                     for image_id in source_image_ids
                 ]
             reference_blobs = []
-            prompt_mentions = []
-            media_counts = {"image": 0, "video": 0, "audio": 0}
             max_inputs = max(
                 0,
                 int(
@@ -1295,35 +1294,17 @@ class AdobeClient:
                 media_mode = True
 
             if media_mode:
-                for media_ref in seedance_refs[:max_inputs]:
-                    media_id = str(media_ref.get("id") or "").strip()
-                    media_type = str(
-                        media_ref.get("media_type") or "image"
-                    ).lower()
-                    if not media_id or media_type not in media_counts:
-                        continue
-                    media_counts[media_type] += 1
-                    label = f"{media_type.title()}{media_counts[media_type]}"
-                    mention_id = uuid.uuid4().hex[:21]
-                    reference_blobs.append(
-                        {
-                            "id": media_id,
-                            "usage": "style" if media_type == "image" else "source",
-                            "mention": {"id": mention_id, "label": label},
-                        }
-                    )
-                    prompt_mentions.append(f"@{mention_id}")
+                seedance_prompt, reference_blobs = bind_seedance_mentions(
+                    prompt, seedance_refs[:max_inputs]
+                )
             else:
+                seedance_prompt = prompt
                 for order, image_id in enumerate((source_image_ids or [])[:2], start=1):
                     media_id = str(image_id or "").strip()
                     if media_id:
                         reference_blobs.append(
                             {"id": media_id, "usage": "frame", "order": order}
                         )
-
-            seedance_prompt = prompt
-            if prompt_mentions:
-                seedance_prompt = f"{prompt} {' '.join(prompt_mentions)}".strip()
 
             payload = {
                 "seeds": [seed_val],
