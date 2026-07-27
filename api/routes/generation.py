@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from api.schemas import GenerateRequest
 from core.entity_store import entity_store
-from core.media_mentions import LoadedMedia
+from core.media_mentions import LoadedMedia, count_media_kinds
 
 
 def build_generation_router(
@@ -747,12 +747,7 @@ def build_generation_router(
                             detail=f"video model supports at most {max_video_inputs} reference media item(s)",
                         )
                     if video_engine == "seedance2":
-                        media_counts = {
-                            media_type: sum(
-                                1 for _, _, kind in input_media if kind == media_type
-                            )
-                            for media_type in ("image", "video", "audio")
-                        }
+                        media_counts = count_media_kinds(input_media)
                         media_limits = {
                             "image": int(video_conf.get("max_input_images") or 9),
                             "video": int(video_conf.get("max_input_videos") or 3),

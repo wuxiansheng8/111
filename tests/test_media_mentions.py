@@ -2,13 +2,25 @@ import unittest
 
 from core.adobe_client import AdobeClient
 from core.media_mentions import (
+    LoadedMedia,
     bind_seedance_mentions,
+    count_media_kinds,
     extract_media_sources,
     normalize_mention_id,
 )
 
 
 class MediaMentionTests(unittest.TestCase):
+    def test_counts_structured_loaded_media(self):
+        media = [
+            LoadedMedia(b"image", "image/png", "image"),
+            LoadedMedia(b"image", "image/png", "image"),
+            LoadedMedia(b"audio", "audio/mpeg", "audio"),
+        ]
+        self.assertEqual(
+            count_media_kinds(media), {"image": 2, "video": 0, "audio": 1}
+        )
+
     def test_extracts_nested_mention_metadata(self):
         sources = extract_media_sources(
             [

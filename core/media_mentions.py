@@ -21,6 +21,14 @@ class LoadedMedia:
     label: str = ""
 
 
+def count_media_kinds(media: list[LoadedMedia]) -> dict[str, int]:
+    counts = {"image": 0, "video": 0, "audio": 0}
+    for item in media:
+        if item.kind in counts:
+            counts[item.kind] += 1
+    return counts
+
+
 def _metadata(value: Any) -> tuple[str, str]:
     if not isinstance(value, dict):
         return "", ""
