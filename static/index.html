@@ -1,62 +1,147 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>adobe2api studio</title>
+  <title>Seedance Studio</title>
+  <link rel="icon" href="data:," />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;700;800&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/styles.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/styles.css?v=20260728-1" />
 </head>
 <body>
-  <div class="bg-orb bg-orb-a"></div>
-  <div class="bg-orb bg-orb-b"></div>
+  <header class="topbar">
+    <a class="brand" href="/studio" aria-label="Seedance Studio 首页">
+      <span class="brand-mark" aria-hidden="true">S</span>
+      <span>
+        <strong>Seedance Studio</strong>
+        <small>Adobe2API</small>
+      </span>
+    </a>
+    <div class="topbar-actions">
+      <span id="accountStatus" class="account-status">正在连接</span>
+      <a class="console-link" href="/">管理后台</a>
+    </div>
+  </header>
 
-  <main class="shell">
-    <section class="hero card">
-      <p class="kicker">Adobe2API Playground</p>
-      <h1>Turn Firefly generation into a clean API flow.</h1>
-      <p class="muted">Submit prompts, track render progress, and preview the final image from one lightweight dashboard.</p>
-    </section>
-
-    <section class="panel-grid">
-      <article class="card form-card">
-        <h2>Create</h2>
-        <label for="prompt">Prompt</label>
-        <textarea id="prompt" placeholder="A cinematic mountain sunrise above clouds, ultra wide, soft rim light"></textarea>
-
-        <label for="ratio">Aspect Ratio</label>
-        <select id="ratio">
-          <option value="16:9">16:9</option>
-          <option value="1:1">1:1</option>
-          <option value="9:16">9:16</option>
-          <option value="4:3">4:3</option>
-          <option value="3:4">3:4</option>
-        </select>
-
-        <button id="runBtn">Generate Image</button>
-        <p id="msg" class="muted small"></p>
-      </article>
-
-      <article class="card result-card">
-        <div class="result-head">
-          <h2>Result</h2>
-          <span id="stateBadge" class="badge idle">idle</span>
+  <main class="studio-shell">
+    <aside class="control-panel" aria-label="视频参数">
+      <section class="control-section">
+        <div class="section-heading">
+          <h2>生成设置</h2>
+          <span id="modelAvailability" class="availability">检查中</span>
         </div>
 
-        <div class="progress-wrap">
-          <div id="progressBar" class="progress-bar"></div>
+        <div class="field-group">
+          <span class="field-label">模型</span>
+          <div class="segmented" role="group" aria-label="Seedance 模型版本">
+            <button type="button" class="segment" data-version="standard">标准版</button>
+            <button type="button" class="segment active" data-version="fast">Fast</button>
+          </div>
         </div>
-        <p id="progressText" class="mono">progress: 0%</p>
 
-        <div class="preview" id="previewWrap">
-          <p class="muted">No image yet</p>
+        <div class="setting-row locked-row">
+          <span class="field-label">分辨率</span>
+          <strong>720p</strong>
         </div>
-      </article>
+
+        <div class="field-group">
+          <span class="field-label">画面比例</span>
+          <div class="segmented ratio-segments" role="group" aria-label="画面比例">
+            <button type="button" class="segment" data-ratio="16:9"><span class="ratio-icon landscape"></span>横向 16:9</button>
+            <button type="button" class="segment active" data-ratio="9:16"><span class="ratio-icon portrait"></span>竖向 9:16</button>
+          </div>
+        </div>
+
+        <div class="setting-row">
+          <label for="duration">时长</label>
+          <select id="duration" class="compact-select" aria-label="视频时长"></select>
+        </div>
+
+        <div class="setting-row locked-row">
+          <span class="field-label">帧率</span>
+          <strong>24 FPS</strong>
+        </div>
+
+        <div class="setting-row">
+          <label for="generateAudio">生成音频</label>
+          <label class="toggle">
+            <input id="generateAudio" type="checkbox" checked />
+            <span class="toggle-track" aria-hidden="true"></span>
+          </label>
+        </div>
+      </section>
+
+      <section class="control-section reference-section">
+        <div class="section-heading">
+          <h2>参考素材</h2>
+          <span id="mediaCount" class="count-badge">0 / 12</span>
+        </div>
+        <div id="dropZone" class="drop-zone" tabindex="0" role="button" aria-label="选择参考素材">
+          <input id="mediaInput" type="file" multiple hidden accept="image/png,image/jpeg,image/webp,video/mp4,video/quicktime,audio/mpeg,audio/mp4,audio/wav,audio/x-wav,audio/aac,audio/ogg" />
+          <span class="upload-mark" aria-hidden="true">+</span>
+          <strong>选择素材</strong>
+          <span>图片、视频或音频</span>
+        </div>
+        <div id="mediaList" class="media-list" aria-live="polite"></div>
+      </section>
+
+      <details class="advanced-panel">
+        <summary>高级设置</summary>
+        <label for="negativePrompt">负面提示词</label>
+        <textarea id="negativePrompt" rows="3" placeholder="不希望出现在视频中的内容"></textarea>
+      </details>
+    </aside>
+
+    <section class="workspace" aria-label="生成工作区">
+      <div class="result-toolbar">
+        <div>
+          <span class="eyebrow">当前作品</span>
+          <h1 id="resultTitle">新视频</h1>
+        </div>
+        <div class="result-actions">
+          <span id="statusBadge" class="status-badge idle">待生成</span>
+          <a id="downloadBtn" class="download-btn" href="#" download hidden>下载</a>
+        </div>
+      </div>
+
+      <div id="resultStage" class="result-stage portrait-stage">
+        <div id="emptyState" class="empty-state">
+          <span class="empty-play" aria-hidden="true"></span>
+          <strong>准备生成</strong>
+          <span>设置参数并提交提示词</span>
+        </div>
+        <video id="resultVideo" controls playsinline hidden></video>
+      </div>
+
+      <div id="progressPanel" class="progress-panel" hidden>
+        <div class="progress-copy">
+          <strong id="progressLabel">正在提交</strong>
+          <span id="elapsedTime">00:00</span>
+        </div>
+        <div class="progress-track"><span id="progressBar"></span></div>
+        <p id="progressDetail">正在准备参考素材</p>
+      </div>
+
+      <div class="composer">
+        <label for="prompt">提示词</label>
+        <div class="composer-row">
+          <textarea id="prompt" rows="3" placeholder="描述你希望生成的视频画面、动作与镜头"></textarea>
+          <button id="generateBtn" class="generate-btn" type="button" disabled>
+            <span class="generate-icon" aria-hidden="true"></span>
+            <span>生成视频</span>
+          </button>
+        </div>
+        <div class="composer-meta">
+          <span id="requestSummary">Fast · 4 秒 · 9:16 · 720p</span>
+          <span id="formMessage" role="status"></span>
+        </div>
+      </div>
     </section>
   </main>
 
-  <script src="/static/app.js"></script>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="/static/app.js?v=20260728-1"></script>
 </body>
 </html>

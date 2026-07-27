@@ -70,6 +70,37 @@ body {
   flex-direction: column;
   gap: 8px;
 }
+.admin-header {
+  position: relative;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.admin-header-copy h1 {
+  font-size: 24px;
+  font-weight: 800;
+}
+.admin-header-copy .muted {
+  margin-top: 4px;
+}
+.studio-entry {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  padding: 0 16px;
+  border: 1px solid rgba(77, 226, 196, 0.42);
+  border-radius: 8px;
+  background: rgba(44, 199, 170, 0.14);
+  color: #6ff2d7;
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+}
+.studio-entry:hover {
+  background: rgba(44, 199, 170, 0.23);
+}
 .kicker {
   text-transform: uppercase;
   letter-spacing: 0.1em;

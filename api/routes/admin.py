@@ -109,6 +109,12 @@ def build_admin_router(
             return RedirectResponse(url="/login")
         return FileResponse(static_dir / "admin.html")
 
+    @router.get("/studio", include_in_schema=False)
+    def page_studio(request: Request):
+        if not is_admin_authenticated(request):
+            return RedirectResponse(url="/login?next=/studio")
+        return FileResponse(static_dir / "index.html")
+
     @router.get("/api/v1/logs")
     def list_logs(request: Request, limit: int = 20, page: int = 1):
         require_admin_auth(request)

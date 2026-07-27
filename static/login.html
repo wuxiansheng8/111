@@ -38,6 +38,10 @@
       const password = document.getElementById("password");
       const loginBtn = document.getElementById("loginBtn");
       const loginMsg = document.getElementById("loginMsg");
+      const requestedNext = new URLSearchParams(window.location.search).get("next") || "/";
+      const nextUrl = requestedNext.startsWith("/") && !requestedNext.startsWith("//")
+        ? requestedNext
+        : "/";
 
       function showMsg(text, isError) {
         loginMsg.textContent = text;
@@ -48,7 +52,7 @@
         try {
           const res = await fetch("/api/v1/auth/me");
           if (res.ok) {
-            window.location.href = "/";
+            window.location.href = nextUrl;
           }
         } catch (_) {
           // ignore
@@ -78,7 +82,7 @@
             showMsg(detail, true);
             return;
           }
-          window.location.href = "/";
+          window.location.href = nextUrl;
         } catch (err) {
           showMsg(err.message || "登录失败", true);
         } finally {
