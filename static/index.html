@@ -3,19 +3,19 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Seedance Studio</title>
+  <title>Video Studio</title>
   <link rel="icon" href="data:," />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/styles.css?v=20260728-1" />
+  <link rel="stylesheet" href="/static/styles.css?v=20260728-2" />
 </head>
 <body>
   <header class="topbar">
-    <a class="brand" href="/studio" aria-label="Seedance Studio 首页">
-      <span class="brand-mark" aria-hidden="true">S</span>
+    <a class="brand" href="/studio" aria-label="Video Studio 首页">
+      <span class="brand-mark" aria-hidden="true">V</span>
       <span>
-        <strong>Seedance Studio</strong>
+        <strong>Video Studio</strong>
         <small>Adobe2API</small>
       </span>
     </a>
@@ -35,15 +35,17 @@
 
         <div class="field-group">
           <span class="field-label">模型</span>
-          <div class="segmented" role="group" aria-label="Seedance 模型版本">
-            <button type="button" class="segment" data-version="standard">标准版</button>
-            <button type="button" class="segment active" data-version="fast">Fast</button>
-          </div>
+          <select id="model" class="model-select" aria-label="视频模型">
+            <option value="seedance-standard">Seedance 2.0 标准版</option>
+            <option value="seedance-fast" selected>Seedance 2.0 Fast</option>
+            <option value="kling3">Kling 3.0</option>
+            <option value="kling-o3">Kling 3.0 Omni</option>
+          </select>
         </div>
 
         <div class="setting-row locked-row">
           <span class="field-label">分辨率</span>
-          <strong>720p</strong>
+          <strong id="resolution">720p</strong>
         </div>
 
         <div class="field-group">
@@ -82,12 +84,12 @@
           <input id="mediaInput" type="file" multiple hidden accept="image/png,image/jpeg,image/webp,video/mp4,video/quicktime,audio/mpeg,audio/mp4,audio/wav,audio/x-wav,audio/aac,audio/ogg" />
           <span class="upload-mark" aria-hidden="true">+</span>
           <strong>选择素材</strong>
-          <span>图片、视频或音频</span>
+          <span id="mediaHint">图片、视频或音频</span>
         </div>
         <div id="mediaList" class="media-list" aria-live="polite"></div>
       </section>
 
-      <details class="advanced-panel">
+      <details id="advancedPanel" class="advanced-panel">
         <summary>高级设置</summary>
         <label for="negativePrompt">负面提示词</label>
         <textarea id="negativePrompt" rows="3" placeholder="不希望出现在视频中的内容"></textarea>
@@ -142,6 +144,6 @@
   </main>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script src="/static/app.js?v=20260728-1"></script>
+  <script src="/static/app.js?v=20260728-2"></script>
 </body>
 </html>

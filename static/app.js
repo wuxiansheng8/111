@@ -2,14 +2,17 @@ document.addEventListener("DOMContentLoaded", () => {
   const ui = {
     accountStatus: document.getElementById("accountStatus"),
     modelAvailability: document.getElementById("modelAvailability"),
-    versionButtons: Array.from(document.querySelectorAll("[data-version]")),
+    model: document.getElementById("model"),
     ratioButtons: Array.from(document.querySelectorAll("[data-ratio]")),
     duration: document.getElementById("duration"),
+    resolution: document.getElementById("resolution"),
     generateAudio: document.getElementById("generateAudio"),
     mediaInput: document.getElementById("mediaInput"),
     dropZone: document.getElementById("dropZone"),
     mediaList: document.getElementById("mediaList"),
     mediaCount: document.getElementById("mediaCount"),
+    mediaHint: document.getElementById("mediaHint"),
+    advancedPanel: document.getElementById("advancedPanel"),
     negativePrompt: document.getElementById("negativePrompt"),
     prompt: document.getElementById("prompt"),
     generateBtn: document.getElementById("generateBtn"),
@@ -29,14 +32,51 @@ document.addEventListener("DOMContentLoaded", () => {
     toast: document.getElementById("toast"),
   };
 
-  const limits = { image: 9, video: 3, audio: 3, total: 12 };
+  const modelProfiles = {
+    "seedance-standard": {
+      label: "Seedance 2.0 标准版",
+      prefix: "firefly-seedance2",
+      durations: Array.from({ length: 12 }, (_, index) => index + 4),
+      resolution: "720p",
+      supportsMedia: true,
+      supportsNegativePrompt: true,
+      limits: { image: 9, video: 3, audio: 3, total: 12 },
+    },
+    "seedance-fast": {
+      label: "Seedance 2.0 Fast",
+      prefix: "firefly-seedance2-fast",
+      durations: Array.from({ length: 12 }, (_, index) => index + 4),
+      resolution: "720p",
+      supportsMedia: true,
+      supportsNegativePrompt: true,
+      limits: { image: 9, video: 3, audio: 3, total: 12 },
+    },
+    kling3: {
+      label: "Kling 3.0",
+      prefix: "firefly-kling3",
+      durations: [5, 10, 15],
+      resolution: "720p",
+      supportsMedia: false,
+      supportsNegativePrompt: false,
+      limits: { image: 2, video: 0, audio: 0, total: 2 },
+    },
+    "kling-o3": {
+      label: "Kling 3.0 Omni",
+      prefix: "firefly-kling-o3",
+      durations: [5, 15],
+      resolution: "1080p",
+      supportsMedia: false,
+      supportsNegativePrompt: false,
+      limits: { image: 2, video: 0, audio: 0, total: 2 },
+    },
+  };
   const sizeLimits = {
     image: 10 * 1024 * 1024,
     video: 200 * 1024 * 1024,
     audio: 50 * 1024 * 1024,
   };
   const state = {
-    version: "fast",
+    model: "seedance-fast",
     ratio: "9:16",
     duration: 4,
     files: [],
@@ -50,6 +90,10 @@ document.addEventListener("DOMContentLoaded", () => {
   };
 
   let toastTimer = null;
+
+  function activeProfile() {
+    return modelProfiles[state.model];
+  }
 
   function showToast(message, error = false) {
     ui.toast.textContent = String(message || "");
@@ -91,15 +135,17 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function modelId() {
-    const versionPart = state.version === "fast" ? "-fast" : "";
-    return `firefly-seedance2${versionPart}-${state.duration}s-${state.ratio.replace(":", "x")}`;
+    return `${activeProfile().prefix}-${state.duration}s-${state.ratio.replace(":", "x")}`;
   }
 
   function updateSummary() {
-    const versionLabel = state.version === "fast" ? "Fast" : "标准版";
+    const profile = activeProfile();
     const audioLabel = ui.generateAudio.checked ? "生成音频" : "静音";
-    ui.requestSummary.textContent = `${versionLabel} · ${state.duration} 秒 · ${state.ratio} · 720p · ${audioLabel}`;
+    ui.requestSummary.textContent = `${profile.label} · ${state.duration} 秒 · ${state.ratio} · ${profile.resolution} · ${audioLabel}`;
+    ui.resolution.textContent = profile.resolution;
+    ui.advancedPanel.hidden = !profile.supportsNegativePrompt;
     ui.resultStage.classList.toggle("portrait-stage", state.ratio === "9:16");
+    renderFiles();
     updateAvailability();
   }
 
@@ -113,7 +159,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const available = state.models.has(current);
     ui.modelAvailability.textContent = available ? "可用" : "不可用";
     ui.modelAvailability.className = `availability ${available ? "ready" : "error"}`;
-    ui.generateBtn.disabled = state.running || !available || state.activeAccounts < 1;
+    ui.generateBtn.disabled = state.running || !available || state.activeAccounts < 1 || !filesFitProfile();
   }
 
   function selectButton(buttons, activeButton) {
@@ -150,9 +196,21 @@ document.addEventListener("DOMContentLoaded", () => {
     );
   }
 
+  function filesFitProfile() {
+    const counts = currentCounts();
+    const limits = activeProfile().limits;
+    return Object.keys(limits).every((kind) => counts[kind] <= limits[kind]);
+  }
+
   function renderFiles() {
     const counts = currentCounts();
+    const limits = activeProfile().limits;
     ui.mediaCount.textContent = `${counts.total} / ${limits.total}`;
+    const supportsMedia = activeProfile().supportsMedia;
+    ui.mediaHint.textContent = supportsMedia ? "图片、视频或音频" : "仅图片，最多 2 张";
+    ui.mediaInput.accept = supportsMedia
+      ? "image/png,image/jpeg,image/webp,video/mp4,video/quicktime,audio/mpeg,audio/mp4,audio/wav,audio/x-wav,audio/aac,audio/ogg"
+      : "image/png,image/jpeg,image/webp";
     ui.mediaList.innerHTML = "";
 
     state.files.forEach((item) => {
@@ -193,6 +251,7 @@ document.addEventListener("DOMContentLoaded", () => {
       row.append(thumb, info, remove);
       ui.mediaList.appendChild(row);
     });
+    updateAvailability();
   }
 
   function addFiles(fileList) {
@@ -200,6 +259,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!incoming.length) return;
 
     const counts = currentCounts();
+    const limits = activeProfile().limits;
     let rejected = 0;
     for (const file of incoming) {
       const kind = fileKind(file);
@@ -306,6 +366,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function beginGeneration() {
+    const profile = activeProfile();
     state.running = true;
     state.startedAt = Date.now();
     state.runId += 1;
@@ -314,7 +375,7 @@ document.addEventListener("DOMContentLoaded", () => {
     ui.resultVideo.hidden = true;
     ui.resultVideo.removeAttribute("src");
     ui.emptyState.hidden = false;
-    ui.resultTitle.textContent = `${state.version === "fast" ? "Seedance Fast" : "Seedance 标准版"} · ${state.duration} 秒`;
+    ui.resultTitle.textContent = `${profile.label} · ${state.duration} 秒`;
     setStatus("running", "生成中");
     setFormMessage("请求已提交，请保持页面打开", "");
     setProgress(5, "正在准备", "正在读取参考素材", true);
@@ -322,6 +383,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   async function buildRequestBody(prompt, selectedModel) {
+    const profile = activeProfile();
     const content = [{ type: "text", text: prompt }];
     for (const item of state.files) {
       const dataUrl = await fileToDataUrl(item.file);
@@ -335,10 +397,10 @@ document.addEventListener("DOMContentLoaded", () => {
       model: selectedModel,
       messages: [{ role: "user", content }],
       generate_audio: ui.generateAudio.checked,
-      reference_mode: state.files.length ? "media" : "frame",
+      reference_mode: profile.supportsMedia && state.files.length ? "media" : "frame",
     };
     const negativePrompt = ui.negativePrompt.value.trim();
-    if (negativePrompt) body.negative_prompt = negativePrompt;
+    if (profile.supportsNegativePrompt && negativePrompt) body.negative_prompt = negativePrompt;
     return body;
   }
 
@@ -382,6 +444,10 @@ document.addEventListener("DOMContentLoaded", () => {
       setFormMessage("请先在管理后台添加可用账号", "error");
       return;
     }
+    if (!filesFitProfile()) {
+      setFormMessage(`${activeProfile().label} 仅支持最多 2 张参考图，请删除其他素材`, "error");
+      return;
+    }
     const selectedModel = modelId();
     if (!state.models.has(selectedModel)) {
       setFormMessage("当前参数对应的模型不可用", "error");
@@ -416,14 +482,6 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   async function initialize() {
-    for (let seconds = 4; seconds <= 15; seconds += 1) {
-      const option = document.createElement("option");
-      option.value = String(seconds);
-      option.textContent = `${seconds} 秒`;
-      ui.duration.appendChild(option);
-    }
-    ui.duration.value = "4";
-
     try {
       const authResponse = await fetch("/api/v1/auth/me");
       if (!authResponse.ok) {
@@ -459,12 +517,25 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  ui.versionButtons.forEach((button) => {
-    button.addEventListener("click", () => {
-      state.version = button.dataset.version || "fast";
-      selectButton(ui.versionButtons, button);
-      updateSummary();
+  function renderDurations() {
+    const durations = activeProfile().durations;
+    ui.duration.innerHTML = "";
+    durations.forEach((seconds) => {
+      const option = document.createElement("option");
+      option.value = String(seconds);
+      option.textContent = `${seconds} 秒`;
+      ui.duration.appendChild(option);
     });
+    state.duration = durations.includes(state.duration) ? state.duration : durations[0];
+    ui.duration.value = String(state.duration);
+  }
+
+  ui.model.addEventListener("change", () => {
+    state.model = ui.model.value;
+    renderDurations();
+    const compatible = filesFitProfile();
+    setFormMessage(compatible ? "" : "当前模型仅支持最多 2 张参考图，请删除其他素材", compatible ? "" : "error");
+    updateSummary();
   });
 
   ui.ratioButtons.forEach((button) => {
@@ -512,6 +583,7 @@ document.addEventListener("DOMContentLoaded", () => {
     state.files.forEach((item) => URL.revokeObjectURL(item.previewUrl));
   });
 
+  renderDurations();
   renderFiles();
   updateSummary();
   initialize();

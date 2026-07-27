@@ -185,7 +185,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .setting-row strong { font-size: 12px; }
 .locked-row strong { color: #46535b; }
 
-.compact-select {
+.compact-select, .model-select {
   width: 92px;
   height: 32px;
   padding: 0 8px;
@@ -197,6 +197,8 @@ button, a { -webkit-tap-highlight-color: transparent; }
   font-size: 12px;
   font-weight: 700;
 }
+
+.model-select { width: 100%; }
 
 .toggle { display: inline-flex; cursor: pointer; }
 .toggle input { position: absolute; opacity: 0; pointer-events: none; }
