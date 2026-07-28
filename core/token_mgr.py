@@ -108,8 +108,10 @@ class TokenManager:
                     break
 
             if target is not None:
+                was_disabled = target.get("status") == "disabled"
                 target["value"] = value
-                target["status"] = "active"
+                if not was_disabled:
+                    target["status"] = "active"
                 target["fails"] = 0
                 target["error_until"] = 0
                 target["updated_at"] = now_ts
@@ -197,7 +199,6 @@ class TokenManager:
             for t in self.tokens:
                 if t["id"] == tid:
                     t["status"] = status
-                    t["fails"] = 0 if status == "active" else t["fails"]
                     if status == "active":
                         t["error_until"] = 0
             self.save()
@@ -322,7 +323,8 @@ class TokenManager:
         with self._lock:
             for t in self.tokens:
                 if t["value"] == value:
-                    t["status"] = "exhausted"
+                    if t.get("status") != "disabled":
+                        t["status"] = "exhausted"
                     t["error_until"] = 0
             self.save()
 
@@ -330,7 +332,8 @@ class TokenManager:
         with self._lock:
             for t in self.tokens:
                 if t["value"] == value:
-                    t["status"] = "invalid"
+                    if t.get("status") != "disabled":
+                        t["status"] = "invalid"
                     t["error_until"] = 0
             self.save()
 
@@ -361,7 +364,6 @@ class TokenManager:
 
             refresh_result = refresh_manager.refresh_once(linked_profile_id)
         except Exception as exc:
-            self.report_error(token_value)
             return {
                 "status": "retry",
                 "message": f"auto refresh failed: {exc}",
@@ -377,23 +379,66 @@ class TokenManager:
             "result": refresh_result,
         }
 
-    def report_error(self, value: str):
-        with self._lock:
-            for t in self.tokens:
-                if t["value"] == value:
-                    t["fails"] += 1
-                    t["updated_at"] = time.time()
-            self.save()
+    @staticmethod
+    def _normalize_failure_threshold(value) -> int:
+        try:
+            return max(0, min(int(value), 10_000))
+        except (TypeError, ValueError):
+            return 0
 
-    def report_success(self, value: str):
+    def record_failure(self, token_id: str, disable_threshold: int = 0) -> bool:
+        tid = str(token_id or "").strip()
+        if not tid:
+            return False
+
+        threshold = self._normalize_failure_threshold(disable_threshold)
+
         with self._lock:
             for t in self.tokens:
-                if t["value"] == value:
-                    t["fails"] = 0
-                    if t["status"] == "error":
-                        t["status"] = "active"
-                        t["error_until"] = 0
-            self.save()
+                if str(t.get("id") or "") != tid:
+                    continue
+                try:
+                    current = int(t.get("fails") or 0)
+                except (TypeError, ValueError):
+                    current = 0
+                t["fails"] = current + 1
+                disabled = (
+                    threshold > 0
+                    and t["fails"] >= threshold
+                    and t.get("status") in {"active", "error"}
+                )
+                if disabled:
+                    t["status"] = "disabled"
+                    t["error_until"] = 0
+                t["updated_at"] = time.time()
+                self.save()
+                return disabled
+        return False
+
+    def enforce_failure_threshold(self, disable_threshold: int) -> int:
+        threshold = self._normalize_failure_threshold(disable_threshold)
+        if threshold <= 0:
+            return 0
+
+        disabled_count = 0
+        now_ts = time.time()
+        with self._lock:
+            for t in self.tokens:
+                if t.get("status") not in {"active", "error"}:
+                    continue
+                try:
+                    failure_count = int(t.get("fails") or 0)
+                except (TypeError, ValueError):
+                    failure_count = 0
+                if failure_count < threshold:
+                    continue
+                t["status"] = "disabled"
+                t["error_until"] = 0
+                t["updated_at"] = now_ts
+                disabled_count += 1
+            if disabled_count:
+                self.save()
+        return disabled_count
 
     @staticmethod
     def _decode_jwt_payload(value: str) -> Optional[dict]:

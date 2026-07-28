@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/styles.css?v=20260728-5" />
+  <link rel="stylesheet" href="/static/styles.css?v=20260729-1" />
 </head>
 <body>
   <header class="topbar">
@@ -129,7 +129,10 @@
       <section class="task-panel" aria-label="视频任务">
         <div class="task-heading">
           <h2>任务队列</h2>
-          <span id="taskCount">0 个任务</span>
+          <div class="task-heading-actions">
+            <span id="taskCount">0 个任务</span>
+            <button id="clearStoppedTasksBtn" class="task-clear-btn" type="button" disabled>清理已停止</button>
+          </div>
         </div>
         <div id="taskList" class="task-list">
           <p class="task-empty">提交后可继续添加任务</p>
@@ -154,6 +157,6 @@
   </main>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="/static/app.js?v=20260728-5"></script>
+  <script type="module" src="/static/app.js?v=20260729-1"></script>
 </body>
 </html>

@@ -172,6 +172,11 @@
             </div>
 
             <div class="form-group">
+              <label for="confTokenFailureDisableThreshold">Token 失败自动禁用阈值 (0 表示关闭)</label>
+              <input type="number" id="confTokenFailureDisableThreshold" class="input-text" min="0" max="10000" step="1" placeholder="0" title="0 表示关闭" />
+            </div>
+
+            <div class="form-group">
               <label for="confRetryBackoffSeconds">重试退避基数 (秒)</label>
               <input type="number" id="confRetryBackoffSeconds" class="input-text" min="0" max="30" step="0.1" placeholder="默认 1.0" />
               <p class="help">第 n 次重试等待时间 = 基数 * 2^(n-1)。</p>
@@ -368,6 +373,6 @@
 
   <div id="appToast" class="toast" role="status" aria-live="polite"></div>
 
-  <script src="/static/admin.js?v=20260302-7"></script>
+  <script src="/static/admin.js?v=20260729-1"></script>
 </body>
 </html>

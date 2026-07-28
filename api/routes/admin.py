@@ -549,6 +549,20 @@ def build_admin_router(
                     detail="token_rotation_strategy must be one of: round_robin, random",
                 )
             update_data["token_rotation_strategy"] = strategy
+        if "token_failure_disable_threshold" in incoming:
+            try:
+                failure_threshold = int(incoming["token_failure_disable_threshold"])
+            except Exception:
+                raise HTTPException(
+                    status_code=400,
+                    detail="token_failure_disable_threshold must be an integer",
+                )
+            if failure_threshold < 0 or failure_threshold > 10000:
+                raise HTTPException(
+                    status_code=400,
+                    detail="token_failure_disable_threshold must be between 0 and 10000",
+                )
+            update_data["token_failure_disable_threshold"] = failure_threshold
         if "batch_concurrency" in incoming:
             try:
                 batch_concurrency = int(incoming["batch_concurrency"])
@@ -619,6 +633,10 @@ def build_admin_router(
                 detail="generated_prune_size_mb must be smaller than generated_max_size_mb",
             )
         config_manager.update_all(update_data)
+        if "token_failure_disable_threshold" in update_data:
+            token_manager.enforce_failure_threshold(
+                update_data["token_failure_disable_threshold"]
+            )
         apply_client_config()
         return config_manager.get_all()
 

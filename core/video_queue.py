@@ -11,6 +11,8 @@ from typing import Callable, Optional
 
 
 class VideoTaskQueue:
+    TERMINAL_STATUSES = frozenset({"succeeded", "failed", "cancelled"})
+
     def __init__(
         self,
         data_dir: Path,
@@ -104,6 +106,26 @@ class VideoTaskQueue:
             self._persist_locked()
             self._condition.notify_all()
             return self._public_task_locked(task)
+
+    def clear_terminal(self) -> list[str]:
+        with self._lock:
+            removed_ids = [
+                task_id
+                for task_id, task in self._tasks.items()
+                if task.get("status") in self.TERMINAL_STATUSES
+            ]
+            if not removed_ids:
+                return []
+
+            removed = set(removed_ids)
+            for task_id in removed_ids:
+                self._tasks.pop(task_id, None)
+                self._delete_payload(task_id)
+            self._pending = deque(
+                task_id for task_id in self._pending if task_id not in removed
+            )
+            self._persist_locked()
+            return removed_ids
 
     def _load(self) -> None:
         if not self._index_path.exists():
@@ -236,7 +258,7 @@ class VideoTaskQueue:
             (
                 item
                 for item in self._tasks.values()
-                if item.get("status") in {"succeeded", "failed", "cancelled"}
+                if item.get("status") in self.TERMINAL_STATUSES
             ),
             key=lambda item: float(item.get("created_at") or 0),
         )

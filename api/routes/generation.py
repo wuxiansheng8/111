@@ -240,6 +240,16 @@ def build_generation_router(
         require_service_api_key(request)
         return {"object": "list", "data": video_task_queue.list(limit=limit)}
 
+    @router.delete("/v1/videos")
+    def clear_stopped_video_tasks(request: Request):
+        require_service_api_key(request)
+        removed_ids = video_task_queue.clear_terminal()
+        return {
+            "status": "ok",
+            "deleted_count": len(removed_ids),
+            "deleted_ids": removed_ids,
+        }
+
     @router.get("/v1/videos/{task_id}")
     def get_video_task(task_id: str, request: Request):
         require_service_api_key(request)

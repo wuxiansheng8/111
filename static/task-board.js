@@ -1,3 +1,5 @@
+const TERMINAL_STATUSES = new Set(["succeeded", "failed", "cancelled"]);
+
 export class VideoTaskBoard {
   constructor({ request, modelSummary, notify }) {
     this.request = request;
@@ -9,6 +11,7 @@ export class VideoTaskBoard {
     this.ui = {
       taskList: document.getElementById("taskList"),
       taskCount: document.getElementById("taskCount"),
+      clearStoppedTasksBtn: document.getElementById("clearStoppedTasksBtn"),
       resultStage: document.getElementById("resultStage"),
       emptyState: document.getElementById("emptyState"),
       emptyTitle: document.querySelector("#emptyState strong"),
@@ -23,6 +26,7 @@ export class VideoTaskBoard {
       progressDetail: document.getElementById("progressDetail"),
       elapsedTime: document.getElementById("elapsedTime"),
     };
+    this.ui.clearStoppedTasksBtn?.addEventListener("click", () => this.clearStopped());
   }
 
   hasSelection() {
@@ -38,6 +42,12 @@ export class VideoTaskBoard {
   add(task) {
     this.tasks.set(String(task.id), task);
     this.select(task.id);
+  }
+
+  orderedTasks() {
+    return Array.from(this.tasks.values()).sort(
+      (a, b) => Number(b.created_at || 0) - Number(a.created_at || 0),
+    );
   }
 
   start() {
@@ -138,6 +148,24 @@ export class VideoTaskBoard {
     this.setProgress(0, this.ui.emptyTitle.textContent, message);
   }
 
+  showIdle() {
+    this.selectedTaskId = "";
+    this.ui.resultTitle.textContent = "新视频";
+    this.setStatus("idle", "待生成");
+    this.ui.downloadBtn.hidden = true;
+    this.ui.downloadBtn.removeAttribute("href");
+    this.ui.resultVideo.pause();
+    this.ui.resultVideo.hidden = true;
+    this.ui.resultVideo.removeAttribute("src");
+    this.ui.emptyState.hidden = false;
+    this.ui.emptyTitle.textContent = "准备生成";
+    this.ui.emptyDetail.textContent = "设置参数并提交提示词";
+    this.ui.progressPanel.hidden = true;
+    this.ui.progressBar.classList.remove("indeterminate");
+    this.ui.progressBar.style.removeProperty("width");
+    this.ui.elapsedTime.textContent = "00:00";
+  }
+
   select(taskId) {
     this.selectedTaskId = String(taskId || "");
     this.render();
@@ -151,11 +179,37 @@ export class VideoTaskBoard {
     if (this.selectedTaskId === task.id) this.show(task);
   }
 
+  async clearStopped() {
+    if (this.ui.clearStoppedTasksBtn?.disabled) return;
+    this.ui.clearStoppedTasksBtn.disabled = true;
+    try {
+      const result = await this.request("/v1/videos", { method: "DELETE" });
+      const deletedIds = new Set(
+        (Array.isArray(result.deleted_ids) ? result.deleted_ids : []).map(String),
+      );
+      deletedIds.forEach((taskId) => this.tasks.delete(taskId));
+
+      if (!this.tasks.has(this.selectedTaskId)) {
+        this.selectedTaskId = String(this.orderedTasks()[0]?.id || "");
+      }
+      if (this.selectedTaskId) this.show(this.tasks.get(this.selectedTaskId));
+      else this.showIdle();
+
+      this.notify(`已清理 ${Number(result.deleted_count || 0)} 个任务`);
+    } catch (error) {
+      this.notify(error.message || "清理失败", true);
+    } finally {
+      this.render();
+    }
+  }
+
   render() {
-    const tasks = Array.from(this.tasks.values()).sort((a, b) => Number(b.created_at || 0) - Number(a.created_at || 0));
+    const tasks = this.orderedTasks();
     const running = tasks.filter((task) => task.status === "running").length;
     const queued = tasks.filter((task) => task.status === "queued").length;
+    const stopped = tasks.filter((task) => TERMINAL_STATUSES.has(task.status)).length;
     this.ui.taskCount.textContent = `${tasks.length} 个任务${running ? ` · ${running} 生成中` : ""}${queued ? ` · ${queued} 排队` : ""}`;
+    if (this.ui.clearStoppedTasksBtn) this.ui.clearStoppedTasksBtn.disabled = stopped === 0;
     this.ui.taskList.innerHTML = "";
     if (!tasks.length) {
       const empty = document.createElement("p");
@@ -214,6 +268,7 @@ export class VideoTaskBoard {
       }
       this.render();
       if (this.selectedTaskId) this.show(this.tasks.get(this.selectedTaskId));
+      else this.showIdle();
     } catch (error) {
       this.notify(error.message || "任务状态读取失败", true);
     } finally {

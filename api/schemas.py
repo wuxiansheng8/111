@@ -41,6 +41,7 @@ class ConfigUpdateRequest(BaseModel):
     retry_on_status_codes: Optional[List[int]] = None
     retry_on_error_types: Optional[List[str]] = None
     token_rotation_strategy: Optional[str] = None
+    token_failure_disable_threshold: Optional[int] = None
     batch_concurrency: Optional[int] = None
     generated_max_size_mb: Optional[int] = None
     generated_prune_size_mb: Optional[int] = None

@@ -687,6 +687,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const confRetryOnStatusCodes = document.getElementById("confRetryOnStatusCodes");
   const confRetryOnErrorTypes = document.getElementById("confRetryOnErrorTypes");
   const confTokenRotationStrategy = document.getElementById("confTokenRotationStrategy");
+  const confTokenFailureDisableThreshold = document.getElementById("confTokenFailureDisableThreshold");
   const confRefreshIntervalHours = document.getElementById("confRefreshIntervalHours");
   const confBatchConcurrency = document.getElementById("confBatchConcurrency");
   const confGeneratedMaxSizeMb = document.getElementById("confGeneratedMaxSizeMb");
@@ -776,6 +777,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           ? data.retry_on_error_types.join(",")
           : "timeout,connection,proxy";
         confTokenRotationStrategy.value = String(data.token_rotation_strategy || "round_robin");
+        confTokenFailureDisableThreshold.value = Number(data.token_failure_disable_threshold ?? 0);
         confRefreshIntervalHours.value = Number(data.refresh_interval_hours || 15);
         currentBatchConcurrency = Math.max(1, Math.min(100, Number(data.batch_concurrency || 5)));
         confBatchConcurrency.value = currentBatchConcurrency;
@@ -821,6 +823,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           .map(s => String(s).trim().toLowerCase())
           .filter(Boolean),
         token_rotation_strategy: String(confTokenRotationStrategy.value || "round_robin").trim() || "round_robin",
+        token_failure_disable_threshold: Number(confTokenFailureDisableThreshold.value || 0),
         refresh_interval_hours: Number(confRefreshIntervalHours.value || 15),
         batch_concurrency: Math.max(1, Math.min(100, Number(confBatchConcurrency.value || 5))),
         generated_max_size_mb: Math.max(100, Math.min(102400, Number(confGeneratedMaxSizeMb.value || 1024))),
@@ -861,6 +864,9 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (!["round_robin", "random"].includes(payload.token_rotation_strategy)) {
         throw new Error("Token 轮换策略无效");
       }
+      if (!Number.isInteger(payload.token_failure_disable_threshold) || payload.token_failure_disable_threshold < 0 || payload.token_failure_disable_threshold > 10000) {
+        throw new Error("Token 失败自动禁用阈值必须是 0-10000 的整数");
+      }
 
       const res = await fetch("/api/v1/config", {
         method: "PUT",
@@ -870,7 +876,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (res.ok) {
         showMsg(configMsg, "配置已保存", false);
         showToast("配置已保存", false);
-        await loadConfig();
+        await Promise.all([loadConfig(), loadTokens()]);
       } else {
         showMsg(configMsg, "保存失败，请检查服务状态", true);
         showToast("保存失败，请检查服务状态", true);

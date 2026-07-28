@@ -644,8 +644,22 @@ def _run_with_token_retries(
         retry_error_text = ""
 
         try:
-            result = run_once(token)
-            token_manager.report_success(token)
+            try:
+                result = run_once(token)
+            except Exception:
+                try:
+                    token_manager.record_failure(
+                        token_meta.get("token_id"),
+                        disable_threshold=config_manager.get(
+                            "token_failure_disable_threshold", 0
+                        ),
+                    )
+                except Exception:
+                    logger.exception(
+                        "failed to persist token failure token_id=%s",
+                        token_meta.get("token_id"),
+                    )
+                raise
             _append_attempt_log(
                 request=request,
                 operation=operation_name,

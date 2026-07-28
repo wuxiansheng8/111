@@ -1,5 +1,5 @@
 import { modelProfiles, sizeLimits, taskModelSummary } from "./studio-models.js?v=20260728-4";
-import { VideoTaskBoard } from "./task-board.js?v=20260728-4";
+import { VideoTaskBoard } from "./task-board.js?v=20260729-1";
 import { createMentionId, insertMention, mentionLabel, mentionToken } from "./media-references.js?v=20260728-5";
 
 document.addEventListener("DOMContentLoaded", () => {
