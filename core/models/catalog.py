@@ -29,6 +29,11 @@ SEEDANCE_RATIO_SUFFIX_MAP = {
 }
 NANO_BANANA2_RATIO_SUFFIX_MAP = {
     **RATIO_SUFFIX_MAP,
+    "21:9": "21x9",
+    "3:2": "3x2",
+    "5:4": "5x4",
+    "4:5": "4x5",
+    "2:3": "2x3",
     "1:8": "1x8",
     "1:4": "1x4",
     "4:1": "4x1",
@@ -191,30 +196,58 @@ for dur in (4, 6, 8):
                 "description": f"Firefly Veo31 Fast video model ({dur}s {ratio} {res})",
             }
 
-for dur in (5, 15):
-    for ratio in ("16:9", "9:16"):
-        model_id = f"firefly-kling-o3-{dur}s-{RATIO_SUFFIX_MAP[ratio]}"
-        VIDEO_MODEL_CATALOG[model_id] = {
-            "engine": "kling-o3",
-            "upstream_model": "kling:firefly:colligo:o3",
-            "duration": dur,
-            "aspect_ratio": ratio,
-            "resolution": "1080p",
-            "description": f"Firefly Kling O3 video model ({dur}s {ratio})",
-        }
+def _register_kling_family(
+    *,
+    prefix: str,
+    engine: str,
+    upstream_model: str,
+    label: str,
+    implicit_resolution: str,
+    reference_modes: tuple[str, ...],
+) -> None:
+    for duration in range(3, 16):
+        for ratio in ("16:9", "9:16"):
+            for resolution in ("720p", "1080p"):
+                resolution_suffix = (
+                    "" if resolution == implicit_resolution else f"-{resolution}"
+                )
+                model_id = (
+                    f"{prefix}-{duration}s-{RATIO_SUFFIX_MAP[ratio]}"
+                    f"{resolution_suffix}"
+                )
+                VIDEO_MODEL_CATALOG[model_id] = {
+                    "engine": engine,
+                    "upstream_model": upstream_model,
+                    "duration": duration,
+                    "aspect_ratio": ratio,
+                    "resolution": resolution,
+                    "generate_audio": True,
+                    "reference_modes": reference_modes,
+                    "max_input_images": 2,
+                    "max_reference_images": 3,
+                    "description": (
+                        f"Firefly {label} video model "
+                        f"({duration}s {ratio} {resolution})"
+                    ),
+                }
 
-for dur in (5, 10, 15):
-    for ratio in ("16:9", "9:16"):
-        model_id = f"firefly-kling3-{dur}s-{RATIO_SUFFIX_MAP[ratio]}"
-        VIDEO_MODEL_CATALOG[model_id] = {
-            "engine": "kling3",
-            "upstream_model": "kling:firefly:colligo:3.0",
-            "duration": dur,
-            "aspect_ratio": ratio,
-            "resolution": "720p",
-            "generate_audio": True,
-            "description": f"Firefly Kling 3.0 video model ({dur}s {ratio} 720p)",
-        }
+
+_register_kling_family(
+    prefix="firefly-kling3",
+    engine="kling3",
+    upstream_model="kling:firefly:colligo:3.0",
+    label="Kling 3.0",
+    implicit_resolution="720p",
+    reference_modes=("frame",),
+)
+_register_kling_family(
+    prefix="firefly-kling-o3",
+    engine="kling-o3",
+    upstream_model="kling:firefly:colligo:o3",
+    label="Kling 3.0 Omni",
+    implicit_resolution="1080p",
+    reference_modes=("frame", "image"),
+)
 
 for engine, version, prefix, label in (
     ("seedance2", "seedance_2.0", "firefly-seedance2", "Seedance 2.0"),
@@ -225,21 +258,29 @@ for engine, version, prefix, label in (
         "Seedance 2.0 Fast",
     ),
 ):
+    resolutions = (
+        ("720p", "1080p") if version == "seedance_2.0" else ("720p",)
+    )
     for dur in range(4, 16):
         for ratio, suffix in SEEDANCE_RATIO_SUFFIX_MAP.items():
-            model_id = f"{prefix}-{dur}s-{suffix}"
-            VIDEO_MODEL_CATALOG[model_id] = {
-                "engine": engine,
-                "upstream_model": f"ugs:video:seedance@{version}",
-                "upstream_model_id": "seedance",
-                "upstream_model_version": version,
-                "duration": dur,
-                "aspect_ratio": ratio,
-                "resolution": "720p",
-                "generate_audio": True,
-                "max_input_images": 9,
-                "max_input_videos": 3,
-                "max_input_audios": 3,
-                "max_reference_media": 12,
-                "description": f"Firefly {label} video model ({dur}s {ratio} 720p)",
-            }
+            for resolution in resolutions:
+                resolution_suffix = "" if resolution == "720p" else f"-{resolution}"
+                model_id = f"{prefix}-{dur}s-{suffix}{resolution_suffix}"
+                VIDEO_MODEL_CATALOG[model_id] = {
+                    "engine": engine,
+                    "upstream_model": f"ugs:video:seedance@{version}",
+                    "upstream_model_id": "seedance",
+                    "upstream_model_version": version,
+                    "duration": dur,
+                    "aspect_ratio": ratio,
+                    "resolution": resolution,
+                    "generate_audio": True,
+                    "max_input_images": 9,
+                    "max_input_videos": 3,
+                    "max_input_audios": 3,
+                    "max_reference_media": 12,
+                    "description": (
+                        f"Firefly {label} video model "
+                        f"({dur}s {ratio} {resolution})"
+                    ),
+                }

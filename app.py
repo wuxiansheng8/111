@@ -38,7 +38,7 @@ from core.adobe_client import (
     UpstreamTemporaryError,
 )
 from core.token_mgr import token_manager
-from core.video_queue import VideoTaskQueue
+from core.generation_queue import AccountLeaseRegistry, GenerationTaskQueue
 from core.media_mentions import LoadedMedia, extract_media_sources
 from core.config_mgr import config_manager
 from core.refresh_mgr import refresh_manager
@@ -1397,7 +1397,13 @@ def _sse_chat_stream(payload: dict):
     yield "data: [DONE]\n\n"
 
 
-def _run_queued_video(payload: dict, account: dict, public_context: dict) -> dict:
+def _run_queued_completion(
+    payload: dict,
+    account: dict,
+    public_context: dict,
+    *,
+    media_type: str,
+) -> dict:
     queued_payload = dict(payload)
     queued_payload["_queue_account_id"] = str(account.get("account_id") or "")
     headers = {"Content-Type": "application/json"}
@@ -1431,18 +1437,25 @@ def _run_queued_video(payload: dict, account: dict, public_context: dict) -> dic
             message = str(error.get("message") or "").strip()
         else:
             message = str(body.get("detail") or "").strip() if isinstance(body, dict) else ""
-        raise RuntimeError(message or f"视频生成失败（HTTP {response.status_code}）")
+        media_label = "图片" if media_type == "image" else "视频"
+        raise RuntimeError(message or f"{media_label}生成失败（HTTP {response.status_code}）")
 
     content = str(
         (((body.get("choices") or [{}])[0].get("message") or {}).get("content") or "")
         if isinstance(body, dict)
         else ""
     )
-    match = re.search(r"<video[^>]+src=['\"]([^'\"]+)['\"]", content, re.I)
+    if media_type == "image":
+        match = re.search(r"!\[[^\]]*\]\(([^)]+)\)", content)
+        if not match:
+            match = re.search(r"(https?://[^\s'\"<>]+\.(?:png|jpe?g|webp))", content, re.I)
+    else:
+        match = re.search(r"<video[^>]+src=['\"]([^'\"]+)['\"]", content, re.I)
+        if not match:
+            match = re.search(r"(https?://[^\s'\"<>]+\.(?:mp4|mov|webm))", content, re.I)
     if not match:
-        match = re.search(r"(https?://[^\s'\"<>]+\.(?:mp4|mov|webm))", content, re.I)
-    if not match:
-        raise RuntimeError("任务已完成，但响应中没有视频地址")
+        media_label = "图片" if media_type == "image" else "视频"
+        raise RuntimeError(f"任务已完成，但响应中没有{media_label}地址")
     result_url = match.group(1)
     parsed_url = urlsplit(result_url)
     if parsed_url.hostname in {"127.0.0.1", "localhost", "::1"} and public_host:
@@ -1453,16 +1466,39 @@ def _run_queued_video(payload: dict, account: dict, public_context: dict) -> dic
     return {"result_url": result_url}
 
 
-video_task_queue = VideoTaskQueue(
+def _run_queued_video(payload: dict, account: dict, public_context: dict) -> dict:
+    return _run_queued_completion(
+        payload, account, public_context, media_type="video"
+    )
+
+
+def _run_queued_image(payload: dict, account: dict, public_context: dict) -> dict:
+    return _run_queued_completion(
+        payload, account, public_context, media_type="image"
+    )
+
+
+generation_account_leases = AccountLeaseRegistry()
+video_task_queue = GenerationTaskQueue(
     data_dir=DATA_DIR / "video_tasks",
     account_provider=token_manager.list_active_account_tokens,
     task_runner=_run_queued_video,
+    media_type="video",
+    lease_registry=generation_account_leases,
+)
+image_task_queue = GenerationTaskQueue(
+    data_dir=DATA_DIR / "image_tasks",
+    account_provider=token_manager.list_active_account_tokens,
+    task_runner=_run_queued_image,
+    media_type="image",
+    lease_registry=generation_account_leases,
 )
 
 
 @app.on_event("startup")
-def _start_video_task_queue() -> None:
+def _start_generation_task_queues() -> None:
     video_task_queue.start()
+    image_task_queue.start()
 
 
 _reconcile_generated_storage(force=True)
@@ -1488,6 +1524,7 @@ app.include_router(
     build_generation_router(
         store=store,
         video_task_queue=video_task_queue,
+        image_task_queue=image_task_queue,
         token_manager=token_manager,
         client=client,
         generated_dir=GENERATED_DIR,

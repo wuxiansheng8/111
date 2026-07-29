@@ -8,6 +8,7 @@ class GenerateRequest(BaseModel):
     aspect_ratio: str = Field(default="16:9")
     output_resolution: str = Field(default="2K")
     model: Optional[str] = None
+    ground_search: bool = False
 
 
 class TokenAddRequest(BaseModel):

@@ -3,19 +3,19 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Video Studio</title>
+  <title>Generation Studio</title>
   <link rel="icon" href="data:," />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/styles.css?v=20260729-1" />
+  <link rel="stylesheet" href="/static/styles.css?v=20260729-2" />
 </head>
 <body>
   <header class="topbar">
-    <a class="brand" href="/studio" aria-label="Video Studio 首页">
-      <span class="brand-mark" aria-hidden="true">V</span>
+    <a class="brand" href="/studio" aria-label="Generation Studio 首页">
+      <span class="brand-mark" aria-hidden="true">G</span>
       <span>
-        <strong>Video Studio</strong>
+        <strong>Generation Studio</strong>
         <small>Adobe2API</small>
       </span>
     </a>
@@ -26,7 +26,7 @@
   </header>
 
   <main class="studio-shell">
-    <aside class="control-panel" aria-label="视频参数">
+    <aside class="control-panel" aria-label="生成参数">
       <section class="control-section">
         <div class="section-heading">
           <h2>生成设置</h2>
@@ -34,39 +34,56 @@
         </div>
 
         <div class="field-group">
-          <span class="field-label">模型</span>
-          <select id="model" class="model-select" aria-label="视频模型">
-            <option value="seedance-standard">Seedance 2.0 标准版</option>
-            <option value="seedance-fast" selected>Seedance 2.0 Fast</option>
-            <option value="kling3">Kling 3.0</option>
-            <option value="kling-o3">Kling 3.0 Omni</option>
-          </select>
-        </div>
-
-        <div class="setting-row locked-row">
-          <span class="field-label">分辨率</span>
-          <strong id="resolution">720p</strong>
-        </div>
-
-        <div class="field-group">
-          <span class="field-label">画面比例</span>
-          <div class="segmented ratio-segments" role="group" aria-label="画面比例">
-            <button type="button" class="segment" data-ratio="16:9"><span class="ratio-icon landscape"></span>横向 16:9</button>
-            <button type="button" class="segment active" data-ratio="9:16"><span class="ratio-icon portrait"></span>竖向 9:16</button>
+          <span class="field-label">生成类型</span>
+          <div class="segmented" role="group" aria-label="生成类型">
+            <button type="button" class="segment" data-media-type="image">图片</button>
+            <button type="button" class="segment active" data-media-type="video">视频</button>
           </div>
         </div>
 
+        <div class="field-group">
+          <span class="field-label">模型</span>
+          <select id="model" class="model-select" aria-label="生成模型"></select>
+        </div>
+
         <div class="setting-row">
+          <label for="resolution">分辨率</label>
+          <select id="resolution" class="compact-select" aria-label="视频分辨率"></select>
+        </div>
+
+        <div class="setting-row">
+          <label for="ratio">画面比例</label>
+          <select id="ratio" class="compact-select" aria-label="画面比例"></select>
+        </div>
+
+        <div id="qualityRow" class="setting-row" hidden>
+          <label for="quality">质量</label>
+          <select id="quality" class="compact-select" aria-label="图片质量">
+            <option value="low">低</option>
+            <option value="medium" selected>中</option>
+            <option value="high">高</option>
+          </select>
+        </div>
+
+        <div id="groundSearchRow" class="setting-row" hidden>
+          <label for="groundSearch">使用 Google 搜索</label>
+          <label class="toggle">
+            <input id="groundSearch" type="checkbox" />
+            <span class="toggle-track" aria-hidden="true"></span>
+          </label>
+        </div>
+
+        <div id="durationRow" class="setting-row">
           <label for="duration">时长</label>
           <select id="duration" class="compact-select" aria-label="视频时长"></select>
         </div>
 
-        <div class="setting-row locked-row">
+        <div id="fpsRow" class="setting-row locked-row">
           <span class="field-label">帧率</span>
           <strong>24 FPS</strong>
         </div>
 
-        <div class="setting-row">
+        <div id="audioRow" class="setting-row">
           <label for="generateAudio">生成音频</label>
           <label class="toggle">
             <input id="generateAudio" type="checkbox" checked />
@@ -79,6 +96,13 @@
         <div class="section-heading">
           <h2>参考素材</h2>
           <span id="mediaCount" class="count-badge">0 / 12</span>
+        </div>
+        <div id="referenceModeGroup" class="field-group" hidden>
+          <span class="field-label">参考方式</span>
+          <div class="segmented" role="group" aria-label="参考方式">
+            <button type="button" class="segment active" data-reference-mode="frame">首尾影格</button>
+            <button type="button" class="segment" data-reference-mode="image">参考图片</button>
+          </div>
         </div>
         <div id="dropZone" class="drop-zone" tabindex="0" role="button" aria-label="选择参考素材">
           <input id="mediaInput" type="file" multiple hidden accept="image/png,image/jpeg,image/webp,video/mp4,video/quicktime,audio/mpeg,audio/mp4,audio/wav,audio/x-wav,audio/aac,audio/ogg" />
@@ -115,6 +139,7 @@
           <span>设置参数并提交提示词</span>
         </div>
         <video id="resultVideo" controls playsinline hidden></video>
+        <img id="resultImage" alt="生成结果" hidden />
       </div>
 
       <div id="progressPanel" class="progress-panel" hidden>
@@ -126,7 +151,7 @@
         <p id="progressDetail">正在准备参考素材</p>
       </div>
 
-      <section class="task-panel" aria-label="视频任务">
+      <section class="task-panel" aria-label="生成任务">
         <div class="task-heading">
           <h2>任务队列</h2>
           <div class="task-heading-actions">
@@ -157,6 +182,6 @@
   </main>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="/static/app.js?v=20260729-1"></script>
+  <script type="module" src="/static/app.js?v=20260729-6"></script>
 </body>
 </html>

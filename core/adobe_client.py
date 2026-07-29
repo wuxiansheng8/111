@@ -964,6 +964,7 @@ class AdobeClient:
         upstream_model_version: str,
         quality_level: Optional[str] = None,
         detail_level: Optional[int] = None,
+        ground_search: bool = False,
         source_image_ids: Optional[list[str]] = None,
     ) -> list[dict]:
         return build_image_payload_candidates(
@@ -974,6 +975,7 @@ class AdobeClient:
             upstream_model_version=upstream_model_version,
             quality_level=quality_level,
             detail_level=detail_level,
+            ground_search=ground_search,
             source_image_ids=source_image_ids,
         )
 
@@ -1204,6 +1206,7 @@ class AdobeClient:
             return payload
 
         if engine == "kling-o3":
+            normalized_reference_mode = str(reference_mode or "frame").lower()
             payload = {
                 "n": 1,
                 "seeds": [seed_val],
@@ -1221,10 +1224,16 @@ class AdobeClient:
                 "referenceBlobs": [],
             }
             if source_image_ids:
-                for idx, image_id in enumerate(source_image_ids[:2], start=1):
-                    payload["referenceBlobs"].append(
-                        {"id": str(image_id), "usage": "frame", "order": idx}
-                    )
+                if normalized_reference_mode == "image":
+                    for image_id in source_image_ids[:3]:
+                        payload["referenceBlobs"].append(
+                            {"id": str(image_id), "usage": "asset"}
+                        )
+                else:
+                    for idx, image_id in enumerate(source_image_ids[:2], start=1):
+                        payload["referenceBlobs"].append(
+                            {"id": str(image_id), "usage": "frame", "order": idx}
+                        )
             if entity_refs:
                 for ref in entity_refs:
                     urn = str(ref.get("urn") or ref.get("id") or "").strip()
@@ -1579,6 +1588,7 @@ class AdobeClient:
         upstream_model_version: str = "nano-banana-2",
         quality_level: Optional[str] = None,
         detail_level: Optional[int] = None,
+        ground_search: bool = False,
         source_image_ids: Optional[list[str]] = None,
         timeout: int = 180,
         out_path: Optional[Path] = None,
@@ -1595,6 +1605,7 @@ class AdobeClient:
             upstream_model_version=upstream_model_version,
             quality_level=quality_level,
             detail_level=detail_level,
+            ground_search=ground_search,
             source_image_ids=source_image_ids,
         ):
             submit_resp = self._post_json(

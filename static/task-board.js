@@ -1,13 +1,14 @@
 const TERMINAL_STATUSES = new Set(["succeeded", "failed", "cancelled"]);
 
-export class VideoTaskBoard {
-  constructor({ request, modelSummary, notify }) {
+export class TaskBoard {
+  constructor({ request, modelSummary, notify, mediaType = "video" }) {
     this.request = request;
     this.modelSummary = modelSummary;
     this.notify = notify;
     this.tasks = new Map();
     this.selectedTaskId = "";
     this.pollTimer = null;
+    this.modeVersion = 0;
     this.ui = {
       taskList: document.getElementById("taskList"),
       taskCount: document.getElementById("taskCount"),
@@ -17,6 +18,7 @@ export class VideoTaskBoard {
       emptyTitle: document.querySelector("#emptyState strong"),
       emptyDetail: document.querySelector("#emptyState span:last-child"),
       resultVideo: document.getElementById("resultVideo"),
+      resultImage: document.getElementById("resultImage"),
       resultTitle: document.getElementById("resultTitle"),
       statusBadge: document.getElementById("statusBadge"),
       downloadBtn: document.getElementById("downloadBtn"),
@@ -26,17 +28,26 @@ export class VideoTaskBoard {
       progressDetail: document.getElementById("progressDetail"),
       elapsedTime: document.getElementById("elapsedTime"),
     };
+    this.setMode(mediaType, false);
     this.ui.clearStoppedTasksBtn?.addEventListener("click", () => this.clearStopped());
   }
 
-  hasSelection() {
-    return Boolean(this.selectedTaskId);
+  setMode(mediaType, refresh = true) {
+    this.stop();
+    this.mediaType = mediaType === "image" ? "image" : "video";
+    this.basePath = this.mediaType === "image" ? "/v1/images/tasks" : "/v1/videos";
+    this.ui.resultStage.classList.toggle("image-stage", this.mediaType === "image");
+    this.modeVersion += 1;
+    this.tasks.clear();
+    this.showIdle();
+    this.render();
+    if (refresh) this.refresh();
   }
 
+  hasSelection() { return Boolean(this.selectedTaskId); }
+
   setDraftRatio(ratio) {
-    if (!this.hasSelection()) {
-      this.ui.resultStage.classList.toggle("portrait-stage", ratio === "9:16");
-    }
+    if (!this.hasSelection()) this.ui.resultStage.classList.toggle("portrait-stage", ratio === "9:16");
   }
 
   add(task) {
@@ -50,9 +61,7 @@ export class VideoTaskBoard {
     );
   }
 
-  start() {
-    this.refresh();
-  }
+  start() { this.refresh(); }
 
   stop() {
     if (this.pollTimer) clearTimeout(this.pollTimer);
@@ -78,25 +87,19 @@ export class VideoTaskBoard {
     const ended = Number(task?.completed_at || Date.now() / 1000) * 1000;
     const seconds = Math.max(0, Math.floor((ended - started) / 1000));
     const minutes = Math.floor(seconds / 60).toString().padStart(2, "0");
-    const remainder = (seconds % 60).toString().padStart(2, "0");
-    return `${minutes}:${remainder}`;
+    return `${minutes}:${(seconds % 60).toString().padStart(2, "0")}`;
   }
 
   statusLabel(task) {
     if (task.status === "queued") return task.queue_position ? `排队第 ${task.queue_position} 位` : "排队中";
-    return {
-      running: "生成中",
-      succeeded: "已完成",
-      failed: "失败",
-      cancelled: "已取消",
-    }[task.status] || task.status;
+    return { running: "生成中", succeeded: "已完成", failed: "失败", cancelled: "已取消" }[task.status] || task.status;
   }
 
   statusClass(status) {
     return { succeeded: "success", queued: "queued", running: "running" }[status] || "failed";
   }
 
-  normalizeVideoUrl(value) {
+  normalizeUrl(value) {
     try {
       const url = new URL(String(value || ""), window.location.origin);
       if (["127.0.0.1", "localhost", "::1"].includes(url.hostname)) {
@@ -108,26 +111,39 @@ export class VideoTaskBoard {
     }
   }
 
-  show(task) {
-    if (!task) return;
-    const videoUrl = this.normalizeVideoUrl(task.result_url);
-    this.ui.resultTitle.textContent = this.modelSummary(task.model);
-    this.ui.resultStage.classList.toggle("portrait-stage", String(task.model || "").endsWith("-9x16"));
-    this.ui.elapsedTime.textContent = this.elapsedLabel(task);
-    this.setStatus(this.statusClass(task.status), this.statusLabel(task));
+  resetMedia() {
     this.ui.downloadBtn.hidden = true;
+    this.ui.resultImage.hidden = true;
+    this.ui.resultImage.removeAttribute("src");
+    this.ui.resultVideo.pause();
     this.ui.resultVideo.hidden = true;
     this.ui.resultVideo.removeAttribute("src");
+  }
+
+  show(task) {
+    if (!task) return;
+    const resultUrl = this.normalizeUrl(task.result_url);
+    const mediaLabel = this.mediaType === "image" ? "图片" : "视频";
+    this.ui.resultTitle.textContent = this.modelSummary(task.model);
+    this.ui.resultStage.classList.toggle("portrait-stage", /-9x16(?:-|$)/.test(String(task.model || "")));
+    this.ui.elapsedTime.textContent = this.elapsedLabel(task);
+    this.setStatus(this.statusClass(task.status), this.statusLabel(task));
+    this.resetMedia();
     this.ui.emptyState.hidden = false;
 
-    if (task.status === "succeeded" && videoUrl) {
-      this.setProgress(100, "生成完成", "视频已保存到服务器");
+    if (task.status === "succeeded" && resultUrl) {
+      this.setProgress(100, "生成完成", `${mediaLabel}已保存到服务器`);
       this.ui.emptyState.hidden = true;
-      this.ui.resultVideo.src = videoUrl;
-      this.ui.resultVideo.hidden = false;
-      this.ui.downloadBtn.href = videoUrl;
+      if (this.mediaType === "image") {
+        this.ui.resultImage.src = resultUrl;
+        this.ui.resultImage.hidden = false;
+      } else {
+        this.ui.resultVideo.src = resultUrl;
+        this.ui.resultVideo.hidden = false;
+        this.ui.resultVideo.load();
+      }
+      this.ui.downloadBtn.href = resultUrl;
       this.ui.downloadBtn.hidden = false;
-      this.ui.resultVideo.load();
       return;
     }
     if (task.status === "running") {
@@ -142,7 +158,7 @@ export class VideoTaskBoard {
       this.setProgress(0, "排队中", this.ui.emptyDetail.textContent, true);
       return;
     }
-    const message = task.error || (task.status === "cancelled" ? "任务已取消" : "视频生成失败");
+    const message = task.error || (task.status === "cancelled" ? "任务已取消" : `${mediaLabel}生成失败`);
     this.ui.emptyTitle.textContent = task.status === "cancelled" ? "任务已取消" : "生成失败";
     this.ui.emptyDetail.textContent = message;
     this.setProgress(0, this.ui.emptyTitle.textContent, message);
@@ -150,13 +166,11 @@ export class VideoTaskBoard {
 
   showIdle() {
     this.selectedTaskId = "";
-    this.ui.resultTitle.textContent = "新视频";
+    const mediaLabel = this.mediaType === "image" ? "图片" : "视频";
+    this.ui.resultTitle.textContent = `新${mediaLabel}`;
     this.setStatus("idle", "待生成");
-    this.ui.downloadBtn.hidden = true;
     this.ui.downloadBtn.removeAttribute("href");
-    this.ui.resultVideo.pause();
-    this.ui.resultVideo.hidden = true;
-    this.ui.resultVideo.removeAttribute("src");
+    this.resetMedia();
     this.ui.emptyState.hidden = false;
     this.ui.emptyTitle.textContent = "准备生成";
     this.ui.emptyDetail.textContent = "设置参数并提交提示词";
@@ -173,7 +187,7 @@ export class VideoTaskBoard {
   }
 
   async cancel(taskId) {
-    const task = await this.request(`/v1/videos/${encodeURIComponent(taskId)}`, { method: "DELETE" });
+    const task = await this.request(`${this.basePath}/${encodeURIComponent(taskId)}`, { method: "DELETE" });
     this.tasks.set(task.id, task);
     this.render();
     if (this.selectedTaskId === task.id) this.show(task);
@@ -183,18 +197,12 @@ export class VideoTaskBoard {
     if (this.ui.clearStoppedTasksBtn?.disabled) return;
     this.ui.clearStoppedTasksBtn.disabled = true;
     try {
-      const result = await this.request("/v1/videos", { method: "DELETE" });
-      const deletedIds = new Set(
-        (Array.isArray(result.deleted_ids) ? result.deleted_ids : []).map(String),
-      );
+      const result = await this.request(this.basePath, { method: "DELETE" });
+      const deletedIds = new Set((result.deleted_ids || []).map(String));
       deletedIds.forEach((taskId) => this.tasks.delete(taskId));
-
-      if (!this.tasks.has(this.selectedTaskId)) {
-        this.selectedTaskId = String(this.orderedTasks()[0]?.id || "");
-      }
+      if (!this.tasks.has(this.selectedTaskId)) this.selectedTaskId = String(this.orderedTasks()[0]?.id || "");
       if (this.selectedTaskId) this.show(this.tasks.get(this.selectedTaskId));
       else this.showIdle();
-
       this.notify(`已清理 ${Number(result.deleted_count || 0)} 个任务`);
     } catch (error) {
       this.notify(error.message || "清理失败", true);
@@ -244,11 +252,8 @@ export class VideoTaskBoard {
         cancel.textContent = "×";
         cancel.addEventListener("click", async (event) => {
           event.stopPropagation();
-          try {
-            await this.cancel(task.id);
-          } catch (error) {
-            this.notify(error.message || "取消失败", true);
-          }
+          try { await this.cancel(task.id); }
+          catch (error) { this.notify(error.message || "取消失败", true); }
         });
         actions.appendChild(cancel);
       }
@@ -259,20 +264,20 @@ export class VideoTaskBoard {
 
   async refresh() {
     this.stop();
+    const version = this.modeVersion;
     try {
-      const body = await this.request("/v1/videos?limit=100");
+      const body = await this.request(`${this.basePath}?limit=100`);
+      if (version !== this.modeVersion) return;
       const tasks = Array.isArray(body.data) ? body.data : [];
       this.tasks = new Map(tasks.map((task) => [String(task.id), task]));
-      if (!this.selectedTaskId || !this.tasks.has(this.selectedTaskId)) {
-        this.selectedTaskId = String(tasks[0]?.id || "");
-      }
+      if (!this.selectedTaskId || !this.tasks.has(this.selectedTaskId)) this.selectedTaskId = String(tasks[0]?.id || "");
       this.render();
       if (this.selectedTaskId) this.show(this.tasks.get(this.selectedTaskId));
       else this.showIdle();
     } catch (error) {
-      this.notify(error.message || "任务状态读取失败", true);
+      if (version === this.modeVersion) this.notify(error.message || "任务状态读取失败", true);
     } finally {
-      this.pollTimer = setTimeout(() => this.refresh(), 2500);
+      if (version === this.modeVersion) this.pollTimer = setTimeout(() => this.refresh(), 2500);
     }
   }
 }

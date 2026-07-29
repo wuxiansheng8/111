@@ -19,6 +19,7 @@ def build_generation_router(
     *,
     store,
     video_task_queue,
+    image_task_queue,
     token_manager,
     client,
     generated_dir: Path,
@@ -49,6 +50,40 @@ def build_generation_router(
 ) -> APIRouter:
     router = APIRouter()
     entity_ref_re = re.compile(r"@entity:([^\s@]+)")
+
+    def _public_context(request: Request) -> dict:
+        forwarded_host = str(request.headers.get("x-forwarded-host") or "").strip()
+        forwarded_proto = str(request.headers.get("x-forwarded-proto") or "").strip()
+        return {
+            "host": forwarded_host or str(request.url.netloc),
+            "proto": forwarded_proto or str(request.url.scheme or "http"),
+            "prefix": str(request.headers.get("x-forwarded-prefix") or "").strip(),
+        }
+
+    def _image_reference_count(messages: Any) -> int:
+        count = 0
+        for message in messages if isinstance(messages, list) else []:
+            content = message.get("content") if isinstance(message, dict) else None
+            for item in content if isinstance(content, list) else []:
+                if isinstance(item, dict) and item.get("type") == "image_url":
+                    count += 1
+        return count
+
+    def _image_quality(data: dict, model_conf: dict) -> str | None:
+        if str(model_conf.get("upstream_model_id") or "") != "gpt-image":
+            return None
+        quality = str(data.get("quality") or client.gpt_image_quality or "medium").lower()
+        if quality not in {"low", "medium", "high"}:
+            raise HTTPException(status_code=400, detail="quality must be low, medium, or high")
+        return quality
+
+    def _image_ground_search(data: dict, model_conf: dict) -> bool:
+        if str(model_conf.get("upstream_model_version") or "") != "nano-banana-3":
+            return False
+        value = data.get("ground_search", data.get("groundSearch", False))
+        if isinstance(value, str):
+            return value.strip().lower() in {"1", "true", "yes", "on"}
+        return bool(value)
 
     def _nanoid(size: int = 21) -> str:
         alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-_"
@@ -225,14 +260,7 @@ def build_generation_router(
         if not prompt:
             raise HTTPException(status_code=400, detail="messages or prompt is required")
 
-        forwarded_host = str(request.headers.get("x-forwarded-host") or "").strip()
-        forwarded_proto = str(request.headers.get("x-forwarded-proto") or "").strip()
-        public_context = {
-            "host": forwarded_host or str(request.url.netloc),
-            "proto": forwarded_proto or str(request.url.scheme or "http"),
-            "prefix": str(request.headers.get("x-forwarded-prefix") or "").strip(),
-        }
-        task = video_task_queue.submit(data, public_context)
+        task = video_task_queue.submit(data, _public_context(request))
         return {"task_id": task["id"], **task}
 
     @router.get("/v1/videos")
@@ -262,6 +290,58 @@ def build_generation_router(
     def cancel_video_task(task_id: str, request: Request):
         require_service_api_key(request)
         task = video_task_queue.cancel(task_id)
+        if not task:
+            raise HTTPException(status_code=404, detail="task not found")
+        if task.get("status") != "cancelled":
+            raise HTTPException(status_code=409, detail="only queued tasks can be cancelled")
+        return task
+
+    @router.post("/v1/images/tasks", status_code=202)
+    def create_image_task(data: dict, request: Request):
+        require_service_api_key(request)
+        model_id = str(data.get("model") or "").strip()
+        if not model_id.startswith(("firefly-nano-banana2-", "firefly-gpt-image-")):
+            raise HTTPException(status_code=400, detail="unsupported studio image model")
+        if model_id not in model_catalog:
+            raise HTTPException(status_code=400, detail="unsupported image model")
+        prompt = extract_prompt_from_messages(data.get("messages") or [])
+        if not prompt:
+            prompt = str(data.get("prompt") or "").strip()
+        if not prompt:
+            raise HTTPException(status_code=400, detail="messages or prompt is required")
+        if _image_reference_count(data.get("messages")) > 6:
+            raise HTTPException(status_code=400, detail="at most 6 reference images are supported")
+        _image_quality(data, model_catalog[model_id])
+        task = image_task_queue.submit(data, _public_context(request))
+        return {"task_id": task["id"], **task}
+
+    @router.get("/v1/images/tasks")
+    def list_image_tasks(request: Request, limit: int = 100):
+        require_service_api_key(request)
+        return {"object": "list", "data": image_task_queue.list(limit=limit)}
+
+    @router.delete("/v1/images/tasks")
+    def clear_stopped_image_tasks(request: Request):
+        require_service_api_key(request)
+        removed_ids = image_task_queue.clear_terminal()
+        return {
+            "status": "ok",
+            "deleted_count": len(removed_ids),
+            "deleted_ids": removed_ids,
+        }
+
+    @router.get("/v1/images/tasks/{task_id}")
+    def get_image_task(task_id: str, request: Request):
+        require_service_api_key(request)
+        task = image_task_queue.get(task_id)
+        if not task:
+            raise HTTPException(status_code=404, detail="task not found")
+        return task
+
+    @router.delete("/v1/images/tasks/{task_id}")
+    def cancel_image_task(task_id: str, request: Request):
+        require_service_api_key(request)
+        task = image_task_queue.cancel(task_id)
         if not task:
             raise HTTPException(status_code=404, detail="task not found")
         if task.get("status") != "cancelled":
@@ -336,12 +416,9 @@ def build_generation_router(
                     upstream_model_version=str(
                         model_conf.get("upstream_model_version") or "nano-banana-2"
                     ),
-                    quality_level=(
-                        client.gpt_image_quality
-                        if str(model_conf.get("upstream_model_id") or "") == "gpt-image"
-                        else None
-                    ),
+                    quality_level=_image_quality(data, model_conf),
                     detail_level=model_conf.get("detail_level"),
+                    ground_search=_image_ground_search(data, model_conf),
                     timeout=client.generate_timeout,
                     out_path=out_path,
                     progress_cb=_image_progress_cb,
@@ -553,6 +630,11 @@ def build_generation_router(
                             else None
                         ),
                         detail_level=model_conf.get("detail_level"),
+                        ground_search=bool(
+                            data.ground_search
+                            and str(model_conf.get("upstream_model_version") or "")
+                            == "nano-banana-3"
+                        ),
                         out_path=out_path,
                     )
                     if image_bytes is not None:
@@ -677,6 +759,20 @@ def build_generation_router(
                 generate_audio = bool(video_conf.get("generate_audio", generate_audio))
             if video_engine == "seedance2" and video_reference_mode == "image":
                 video_reference_mode = "media"
+            supported_reference_modes = tuple(
+                str(mode) for mode in video_conf.get("reference_modes") or ()
+            )
+            if (
+                supported_reference_modes
+                and video_reference_mode not in supported_reference_modes
+            ):
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"{video_engine} supports reference_mode: "
+                        f"{', '.join(supported_reference_modes)}"
+                    ),
+                )
         else:
             ratio, output_resolution, resolved_model_id = resolve_ratio_and_resolution(
                 data, model_id or None
@@ -732,6 +828,13 @@ def build_generation_router(
                         and video_reference_mode == "image"
                     ):
                         max_video_inputs = 3
+                    elif (
+                        video_engine == "kling-o3"
+                        and video_reference_mode == "image"
+                    ):
+                        max_video_inputs = max(
+                            0, int((video_conf or {}).get("max_reference_images") or 3)
+                        )
                     else:
                         configured_max_inputs = (video_conf or {}).get(
                             "max_reference_media",
@@ -895,13 +998,9 @@ def build_generation_router(
                             image_model_conf.get("upstream_model_version")
                             or "nano-banana-2"
                         ),
-                        quality_level=(
-                            client.gpt_image_quality
-                            if str(image_model_conf.get("upstream_model_id") or "")
-                            == "gpt-image"
-                            else None
-                        ),
+                        quality_level=_image_quality(data, image_model_conf),
                         detail_level=image_model_conf.get("detail_level"),
+                        ground_search=_image_ground_search(data, image_model_conf),
                         source_image_ids=source_image_ids,
                         timeout=client.generate_timeout,
                         out_path=out_path,

@@ -10,7 +10,24 @@ from pathlib import Path
 from typing import Callable, Optional
 
 
-class VideoTaskQueue:
+class AccountLeaseRegistry:
+    def __init__(self) -> None:
+        self._leased: set[str] = set()
+        self._lock = threading.Lock()
+
+    def acquire(self, account_id: str) -> bool:
+        with self._lock:
+            if account_id in self._leased:
+                return False
+            self._leased.add(account_id)
+            return True
+
+    def release(self, account_id: str) -> None:
+        with self._lock:
+            self._leased.discard(account_id)
+
+
+class GenerationTaskQueue:
     TERMINAL_STATUSES = frozenset({"succeeded", "failed", "cancelled"})
 
     def __init__(
@@ -18,6 +35,8 @@ class VideoTaskQueue:
         data_dir: Path,
         account_provider: Callable[[], list[dict]],
         task_runner: Callable[[dict, dict, dict], dict],
+        media_type: str,
+        lease_registry: Optional[AccountLeaseRegistry] = None,
         max_items: int = 200,
     ) -> None:
         self._data_dir = Path(data_dir)
@@ -25,10 +44,11 @@ class VideoTaskQueue:
         self._index_path = self._data_dir / "tasks.json"
         self._account_provider = account_provider
         self._task_runner = task_runner
+        self._media_type = str(media_type or "generation")
+        self._lease_registry = lease_registry or AccountLeaseRegistry()
         self._max_items = max(20, int(max_items))
         self._tasks: dict[str, dict] = {}
         self._pending: deque[str] = deque()
-        self._leased_accounts: set[str] = set()
         self._lock = threading.RLock()
         self._condition = threading.Condition(self._lock)
         self._started = False
@@ -43,7 +63,7 @@ class VideoTaskQueue:
             self._started = True
             threading.Thread(
                 target=self._dispatch_loop,
-                name="video-task-dispatcher",
+                name=f"{self._media_type}-task-dispatcher",
                 daemon=True,
             ).start()
 
@@ -56,6 +76,7 @@ class VideoTaskQueue:
             "status": "queued",
             "progress": 0.0,
             "model": str(payload.get("model") or ""),
+            "media_type": self._media_type,
             "prompt_preview": prompt[:120],
             "result_url": None,
             "error": None,
@@ -140,6 +161,7 @@ class VideoTaskQueue:
                 continue
             task = dict(item)
             task_id = str(task["id"])
+            task.setdefault("media_type", self._media_type)
             if task.get("status") in {"queued", "running"}:
                 if self._payload_path(task_id).exists():
                     task.update(
@@ -171,7 +193,7 @@ class VideoTaskQueue:
             threading.Thread(
                 target=self._run_task,
                 args=(task_id, account),
-                name=f"video-task-{task_id[:8]}",
+                name=f"{self._media_type}-task-{task_id[:8]}",
                 daemon=True,
             ).start()
 
@@ -186,21 +208,18 @@ class VideoTaskQueue:
             return None
 
         accounts = self._account_provider() or []
-        account = next(
-            (
-                item
-                for item in accounts
-                if str(item.get("account_id") or "") not in self._leased_accounts
-            ),
-            None,
-        )
+        account = None
+        for item in accounts:
+            account_id = str(item.get("account_id") or "")
+            if account_id and self._lease_registry.acquire(account_id):
+                account = item
+                break
         if account is None:
             return None
 
         task_id = self._pending.popleft()
         task = self._tasks[task_id]
         account_id = str(account.get("account_id") or "")
-        self._leased_accounts.add(account_id)
         task.update(
             status="running",
             progress=5.0,
@@ -214,7 +233,7 @@ class VideoTaskQueue:
 
     def _run_task(self, task_id: str, account: dict) -> None:
         account_id = str(account.get("account_id") or "")
-        final_state = {"status": "failed", "error": "视频生成失败"}
+        final_state = {"status": "failed", "error": "生成失败"}
         try:
             request_data = json.loads(self._payload_path(task_id).read_text(encoding="utf-8"))
             result = self._task_runner(
@@ -229,14 +248,14 @@ class VideoTaskQueue:
                 "error": None,
             }
         except Exception as exc:
-            final_state["error"] = str(exc)[:500] or "视频生成失败"
+            final_state["error"] = str(exc)[:500] or "生成失败"
         finally:
             self._delete_payload(task_id)
             with self._condition:
                 task = self._tasks.get(task_id)
                 if task:
                     task.update(final_state, completed_at=time.time())
-                self._leased_accounts.discard(account_id)
+                self._lease_registry.release(account_id)
                 self._persist_locked()
                 self._condition.notify_all()
 
