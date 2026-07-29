@@ -1,4 +1,5 @@
 import { buildModelId, modelProfiles, sizeLimits, taskModelSummary } from "./studio-models.js?v=20260729-3";
+import { estimateCreditCost } from "./studio-credit-costs.js?v=20260729-1";
 import { TaskBoard } from "./task-board.js?v=20260729-2";
 import { createMentionId, insertMention, mentionLabel, mentionToken } from "./media-references.js?v=20260728-5";
 
@@ -32,6 +33,7 @@ document.addEventListener("DOMContentLoaded", () => {
     generateBtn: document.getElementById("generateBtn"),
     generateLabel: document.querySelector("#generateBtn span:last-child"),
     requestSummary: document.getElementById("requestSummary"),
+    creditCost: document.getElementById("creditCost"),
     formMessage: document.getElementById("formMessage"),
     toast: document.getElementById("toast"),
   };
@@ -217,6 +219,20 @@ document.addEventListener("DOMContentLoaded", () => {
     updateSummary();
   }
 
+  function updateCreditCost() {
+    const credits = estimateCreditCost({
+      mediaType: state.mediaType,
+      model: draft().model,
+      resolution: draft().resolution,
+      quality: draft().quality,
+      duration: draft().duration,
+      generateAudio: ui.generateAudio.checked,
+    });
+
+    ui.creditCost.hidden = credits == null;
+    ui.creditCost.textContent = credits == null ? "" : `使用 ${credits} 个点数`;
+  }
+
   function updateSummary() {
     const profile = activeProfile();
     if (state.mediaType === "image") {
@@ -229,6 +245,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const audioLabel = ui.generateAudio.checked ? "生成音频" : "静音";
       ui.requestSummary.textContent = `${profile.label} · ${draft().duration} 秒 · ${draft().ratio} · ${draft().resolution} · ${audioLabel}`;
     }
+    updateCreditCost();
     taskBoard.setDraftRatio(draft().ratio);
     updateAvailability();
   }

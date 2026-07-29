@@ -520,7 +520,10 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .generate-btn:hover { background: var(--accent-strong); }
 .generate-btn:disabled { cursor: wait; background: #8da7a3; }
 .generate-icon { color: #fff; }
-.composer-meta { min-height: 19px; margin-top: 8px; display: flex; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 10px; }
+.composer-meta { min-height: 19px; margin-top: 8px; display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 10px; }
+.composer-status { min-width: 0; display: flex; align-items: center; justify-content: flex-end; gap: 12px; }
+.credit-cost { margin-left: auto; white-space: nowrap; color: var(--ink); font-size: 12px; font-weight: 700; }
+#formMessage { min-width: 0; }
 #formMessage.error { color: var(--danger); }
 #formMessage.success { color: var(--accent); }
 
@@ -569,5 +572,6 @@ button, a { -webkit-tap-highlight-color: transparent; }
   .brand small { display: none; }
   .console-link { padding: 0 9px; }
   .workspace { grid-template-rows: auto 330px auto auto; }
-  .composer-meta { flex-direction: column; gap: 3px; }
+  .composer-meta { align-items: stretch; flex-direction: column; gap: 3px; }
+  .composer-status { width: 100%; }
 }

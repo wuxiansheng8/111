@@ -52,7 +52,7 @@ class KlingModelTests(unittest.TestCase):
             ],
         )
 
-    def test_kling_omni_image_mode_uses_up_to_three_asset_references(self):
+    def test_kling_omni_image_mode_uses_up_to_three_style_references(self):
         client = AdobeClient.__new__(AdobeClient)
         payload = client._build_video_payload(
             video_conf={"engine": "kling-o3", "resolution": "1080p"},
@@ -66,9 +66,9 @@ class KlingModelTests(unittest.TestCase):
         self.assertEqual(
             payload["referenceBlobs"],
             [
-                {"id": "reference-1", "usage": "asset"},
-                {"id": "reference-2", "usage": "asset"},
-                {"id": "reference-3", "usage": "asset"},
+                {"id": "reference-1", "usage": "style"},
+                {"id": "reference-2", "usage": "style"},
+                {"id": "reference-3", "usage": "style"},
             ],
         )
 

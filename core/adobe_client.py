@@ -1227,7 +1227,7 @@ class AdobeClient:
                 if normalized_reference_mode == "image":
                     for image_id in source_image_ids[:3]:
                         payload["referenceBlobs"].append(
-                            {"id": str(image_id), "usage": "asset"}
+                            {"id": str(image_id), "usage": "style"}
                         )
                 else:
                     for idx, image_id in enumerate(source_image_ids[:2], start=1):
