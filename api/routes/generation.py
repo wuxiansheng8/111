@@ -8,10 +8,12 @@ from pathlib import Path
 from typing import Any, Callable
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from starlette.background import BackgroundTask
 
 from api.schemas import GenerateRequest
 from core.entity_store import entity_store
+from core.generation_archive import build_generation_archive
 from core.media_mentions import LoadedMedia, count_media_kinds
 
 
@@ -29,6 +31,7 @@ def build_generation_router(
     resolve_model: Callable[[str | None], dict],
     resolve_ratio_and_resolution: Callable[[dict, str | None], tuple[str, str, str]],
     require_service_api_key: Callable[[Request], None],
+    require_admin_auth: Callable[[Request], None],
     set_request_task_progress: Callable[..., None],
     run_with_token_retries: Callable[..., Any],
     set_request_error_detail: Callable[..., str],
@@ -59,6 +62,24 @@ def build_generation_router(
             "proto": forwarded_proto or str(request.url.scheme or "http"),
             "prefix": str(request.headers.get("x-forwarded-prefix") or "").strip(),
         }
+
+    def _archive_response(queue, media_type: str):
+        result = build_generation_archive(
+            queue.list(limit=10_000),
+            generated_dir,
+            media_type,
+        )
+        if result is None:
+            raise HTTPException(status_code=404, detail="没有可下载的已完成文件")
+
+        archive_path, filename, count = result
+        return FileResponse(
+            archive_path,
+            filename=filename,
+            media_type="application/zip",
+            headers={"X-Archive-File-Count": str(count)},
+            background=BackgroundTask(archive_path.unlink, missing_ok=True),
+        )
 
     def _image_reference_count(messages: Any) -> int:
         count = 0
@@ -268,6 +289,11 @@ def build_generation_router(
         require_service_api_key(request)
         return {"object": "list", "data": video_task_queue.list(limit=limit)}
 
+    @router.get("/api/v1/studio/videos/archive")
+    def download_video_archive(request: Request):
+        require_admin_auth(request)
+        return _archive_response(video_task_queue, "video")
+
     @router.delete("/v1/videos")
     def clear_stopped_video_tasks(request: Request):
         require_service_api_key(request)
@@ -319,6 +345,11 @@ def build_generation_router(
     def list_image_tasks(request: Request, limit: int = 100):
         require_service_api_key(request)
         return {"object": "list", "data": image_task_queue.list(limit=limit)}
+
+    @router.get("/api/v1/studio/images/archive")
+    def download_image_archive(request: Request):
+        require_admin_auth(request)
+        return _archive_response(image_task_queue, "image")
 
     @router.delete("/v1/images/tasks")
     def clear_stopped_image_tasks(request: Request):

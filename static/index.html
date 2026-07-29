@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/styles.css?v=20260729-3" />
+  <link rel="stylesheet" href="/static/styles.css?v=20260729-4" />
 </head>
 <body>
   <header class="topbar">
@@ -156,7 +156,8 @@
           <h2>任务队列</h2>
           <div class="task-heading-actions">
             <span id="taskCount">0 个任务</span>
-            <button id="clearStoppedTasksBtn" class="task-clear-btn" type="button" disabled>清理已停止</button>
+            <button id="downloadAllTasksBtn" class="task-heading-btn download" type="button" disabled>下载全部</button>
+            <button id="clearStoppedTasksBtn" class="task-heading-btn clear" type="button" disabled>清理已停止</button>
           </div>
         </div>
         <div id="taskList" class="task-list">
@@ -190,6 +191,6 @@
   </dialog>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="/static/app.js?v=20260729-10"></script>
+  <script type="module" src="/static/app.js?v=20260729-12"></script>
 </body>
 </html>

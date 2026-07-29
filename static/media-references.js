@@ -12,6 +12,27 @@ export function mentionToken(item) {
   return `@${item.mentionId}`;
 }
 
+export function reindexMediaMentions(items, prompt, removedMentionId = "") {
+  const counters = { image: 0, video: 0, audio: 0 };
+  const replacements = new Map();
+  const files = items.map((item) => {
+    const sequence = ++counters[item.kind];
+    const mentionId = createMentionId(item.kind, sequence);
+    replacements.set(mentionToken(item), `@${mentionId}`);
+    return { ...item, sequence, mentionId };
+  });
+
+  const removedToken = removedMentionId ? `@${removedMentionId}` : "";
+  const text = String(prompt || "")
+    .replace(/@(图片|视频|音频)\d+/g, (token) => {
+      if (token === removedToken) return "";
+      return replacements.get(token) || token;
+    })
+    .replace(/[ \t]{2,}/g, " ");
+
+  return { files, prompt: text };
+}
+
 export function insertMention(textarea, token) {
   const start = textarea.selectionStart ?? textarea.value.length;
   const end = textarea.selectionEnd ?? start;

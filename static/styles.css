@@ -482,7 +482,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .task-heading h2 { margin: 0; font-size: 12px; }
 .task-heading span { color: var(--muted); font-size: 10px; }
 .task-heading-actions { display: flex; align-items: center; gap: 8px; }
-.task-clear-btn {
+.task-heading-btn {
   min-height: 28px;
   padding: 0 9px;
   border: 1px solid var(--line);
@@ -493,8 +493,9 @@ button, a { -webkit-tap-highlight-color: transparent; }
   font-size: 10px;
   font-weight: 700;
 }
-.task-clear-btn:hover:not(:disabled) { border-color: var(--danger); color: var(--danger); }
-.task-clear-btn:disabled { cursor: default; opacity: 0.45; }
+.task-heading-btn.download:hover:not(:disabled) { border-color: var(--accent); color: var(--accent-strong); }
+.task-heading-btn.clear:hover:not(:disabled) { border-color: var(--danger); color: var(--danger); }
+.task-heading-btn:disabled { cursor: default; opacity: 0.45; }
 .task-list { max-height: 174px; margin-top: 8px; overflow-y: auto; display: grid; gap: 5px; }
 .task-empty { margin: 5px 0; color: var(--muted); font-size: 10px; }
 .task-item {

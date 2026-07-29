@@ -1534,6 +1534,7 @@ app.include_router(
         resolve_model=resolve_model,
         resolve_ratio_and_resolution=resolve_ratio_and_resolution,
         require_service_api_key=_require_service_api_key,
+        require_admin_auth=_require_admin_auth,
         set_request_task_progress=_set_request_task_progress,
         run_with_token_retries=_run_with_token_retries,
         set_request_error_detail=_set_request_error_detail,

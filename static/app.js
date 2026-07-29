@@ -1,7 +1,7 @@
 import { buildModelId, modelProfiles, sizeLimits, taskModelSummary } from "./studio-models.js?v=20260729-4";
 import { estimateCreditCost } from "./studio-credit-costs.js?v=20260729-1";
-import { TaskBoard } from "./task-board.js?v=20260729-4";
-import { createMentionId, insertMention, mentionLabel, mentionToken } from "./media-references.js?v=20260728-5";
+import { TaskBoard } from "./task-board.js?v=20260729-5";
+import { createMentionId, insertMention, mentionLabel, mentionToken, reindexMediaMentions } from "./media-references.js?v=20260729-6";
 
 document.addEventListener("DOMContentLoaded", () => {
   const ui = {
@@ -55,7 +55,6 @@ document.addEventListener("DOMContentLoaded", () => {
     activeAccounts: 0,
     initialized: false,
     submitting: false,
-    mediaSequences: { image: 0, video: 0, audio: 0 },
   };
   let toastTimer = null;
 
@@ -316,7 +315,13 @@ document.addEventListener("DOMContentLoaded", () => {
       remove.textContent = "×";
       remove.addEventListener("click", () => {
         URL.revokeObjectURL(item.previewUrl);
-        draft().files = draft().files.filter((candidate) => candidate.id !== item.id);
+        const reindexed = reindexMediaMentions(
+          draft().files.filter((candidate) => candidate.id !== item.id),
+          ui.prompt.value,
+          item.mentionId,
+        );
+        draft().files = reindexed.files;
+        ui.prompt.value = reindexed.prompt;
         renderFiles();
         updateAvailability();
       });
@@ -341,7 +346,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       counts[kind] += 1;
       counts.total += 1;
-      const sequence = ++state.mediaSequences[kind];
+      const sequence = counts[kind];
       draft().files.push({
         id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
         file, kind, sequence,

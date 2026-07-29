@@ -12,6 +12,7 @@ export class TaskBoard {
     this.ui = {
       taskList: document.getElementById("taskList"),
       taskCount: document.getElementById("taskCount"),
+      downloadAllTasksBtn: document.getElementById("downloadAllTasksBtn"),
       clearStoppedTasksBtn: document.getElementById("clearStoppedTasksBtn"),
       resultStage: document.getElementById("resultStage"),
       emptyState: document.getElementById("emptyState"),
@@ -32,6 +33,7 @@ export class TaskBoard {
       elapsedTime: document.getElementById("elapsedTime"),
     };
     this.setMode(mediaType, false);
+    this.ui.downloadAllTasksBtn?.addEventListener("click", () => this.downloadAll());
     this.ui.clearStoppedTasksBtn?.addEventListener("click", () => this.clearStopped());
     this.ui.resultImage.addEventListener("dblclick", () => this.openImageViewer());
     this.ui.resultImage.addEventListener("keydown", (event) => {
@@ -246,12 +248,20 @@ export class TaskBoard {
     }
   }
 
+  downloadAll() {
+    if (this.ui.downloadAllTasksBtn?.disabled) return;
+    const type = this.mediaType === "image" ? "images" : "videos";
+    window.location.assign(`/api/v1/studio/${type}/archive`);
+  }
+
   render() {
     const tasks = this.orderedTasks();
     const running = tasks.filter((task) => task.status === "running").length;
     const queued = tasks.filter((task) => task.status === "queued").length;
     const stopped = tasks.filter((task) => TERMINAL_STATUSES.has(task.status)).length;
+    const completed = tasks.filter((task) => task.status === "succeeded" && task.result_url).length;
     this.ui.taskCount.textContent = `${tasks.length} 个任务${running ? ` · ${running} 生成中` : ""}${queued ? ` · ${queued} 排队` : ""}`;
+    if (this.ui.downloadAllTasksBtn) this.ui.downloadAllTasksBtn.disabled = completed === 0;
     if (this.ui.clearStoppedTasksBtn) this.ui.clearStoppedTasksBtn.disabled = stopped === 0;
     this.ui.taskList.innerHTML = "";
     if (!tasks.length) {
