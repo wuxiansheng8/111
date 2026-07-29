@@ -57,7 +57,7 @@ export const imageModelProfiles = {
     prefix: "firefly-nano-banana2",
     resolutions: ["1K", "2K", "4K"],
     ratios: [
-      "1:1", "21:9", "16:9", "3:2", "4:3", "5:4", "4:5",
+      "auto", "1:1", "21:9", "16:9", "3:2", "4:3", "5:4", "4:5",
       "3:4", "2:3", "9:16", "8:1", "4:1", "1:4", "1:8",
     ],
     qualities: [],
@@ -70,7 +70,7 @@ export const imageModelProfiles = {
     label: "GPT Image 2",
     prefix: "firefly-gpt-image",
     resolutions: ["1K", "2K", "4K"],
-    ratios: ["1:1", "21:9", "16:9", "3:2", "4:3", "5:4", "4:5", "3:4", "2:3", "9:16"],
+    ratios: ["auto", "1:1", "21:9", "16:9", "3:2", "4:3", "5:4", "4:5", "3:4", "2:3", "9:16"],
     qualities: ["low", "medium", "high"],
     supportsGroundSearch: false,
     defaultQuality: "medium",
@@ -108,8 +108,10 @@ export function taskModelSummary(model) {
   const imageProfile = images.find((item) => value.startsWith(`${item.prefix}-`));
   if (imageProfile) {
     const suffix = value.slice(imageProfile.prefix.length + 1);
-    const match = suffix.match(/^(1k|2k|4k)-(\d+)x(\d+)$/i);
-    return match ? `${imageProfile.label} · ${match[1].toUpperCase()} · ${match[2]}:${match[3]}` : imageProfile.label;
+    const match = suffix.match(/^(1k|2k|4k)-(auto|(\d+)x(\d+))$/i);
+    if (!match) return imageProfile.label;
+    const ratio = match[2].toLowerCase() === "auto" ? "自动" : `${match[3]}:${match[4]}`;
+    return `${imageProfile.label} · ${match[1].toUpperCase()} · ${ratio}`;
   }
 
   const videos = Object.values(videoModelProfiles).sort((a, b) => b.prefix.length - a.prefix.length);

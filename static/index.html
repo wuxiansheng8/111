@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/styles.css?v=20260729-2" />
+  <link rel="stylesheet" href="/static/styles.css?v=20260729-3" />
 </head>
 <body>
   <header class="topbar">
@@ -139,7 +139,7 @@
           <span>设置参数并提交提示词</span>
         </div>
         <video id="resultVideo" controls playsinline hidden></video>
-        <img id="resultImage" alt="生成结果" hidden />
+        <img id="resultImage" alt="生成结果" tabindex="0" role="button" aria-label="打开生成图片全图" hidden />
       </div>
 
       <div id="progressPanel" class="progress-panel" hidden>
@@ -184,7 +184,12 @@
     </section>
   </main>
 
+  <dialog id="imageViewer" class="image-viewer" aria-label="图片全图预览">
+    <button id="imageViewerClose" class="image-viewer-close" type="button" title="关闭" aria-label="关闭">×</button>
+    <img id="imageViewerImage" alt="生成图片全图" />
+  </dialog>
+
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="/static/app.js?v=20260729-7"></script>
+  <script type="module" src="/static/app.js?v=20260729-10"></script>
 </body>
 </html>

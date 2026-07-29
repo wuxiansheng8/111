@@ -1,6 +1,6 @@
-import { buildModelId, modelProfiles, sizeLimits, taskModelSummary } from "./studio-models.js?v=20260729-3";
+import { buildModelId, modelProfiles, sizeLimits, taskModelSummary } from "./studio-models.js?v=20260729-4";
 import { estimateCreditCost } from "./studio-credit-costs.js?v=20260729-1";
-import { TaskBoard } from "./task-board.js?v=20260729-2";
+import { TaskBoard } from "./task-board.js?v=20260729-4";
 import { createMentionId, insertMention, mentionLabel, mentionToken } from "./media-references.js?v=20260728-5";
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -189,7 +189,12 @@ document.addEventListener("DOMContentLoaded", () => {
     const profile = activeProfile();
     if (!profile.ratios.includes(draft().ratio)) draft().ratio = profile.ratios[0];
     if (!profile.resolutions.includes(draft().resolution)) draft().resolution = profile.resolutions[0];
-    renderOptions(ui.ratio, profile.ratios, draft().ratio);
+    renderOptions(
+      ui.ratio,
+      profile.ratios,
+      draft().ratio,
+      (value) => value === "auto" ? "自动" : value,
+    );
     renderOptions(ui.resolution, profile.resolutions, draft().resolution);
     ui.resolution.disabled = profile.resolutions.length === 1;
 

@@ -19,6 +19,9 @@ export class TaskBoard {
       emptyDetail: document.querySelector("#emptyState span:last-child"),
       resultVideo: document.getElementById("resultVideo"),
       resultImage: document.getElementById("resultImage"),
+      imageViewer: document.getElementById("imageViewer"),
+      imageViewerImage: document.getElementById("imageViewerImage"),
+      imageViewerClose: document.getElementById("imageViewerClose"),
       resultTitle: document.getElementById("resultTitle"),
       statusBadge: document.getElementById("statusBadge"),
       downloadBtn: document.getElementById("downloadBtn"),
@@ -30,6 +33,19 @@ export class TaskBoard {
     };
     this.setMode(mediaType, false);
     this.ui.clearStoppedTasksBtn?.addEventListener("click", () => this.clearStopped());
+    this.ui.resultImage.addEventListener("dblclick", () => this.openImageViewer());
+    this.ui.resultImage.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      this.openImageViewer();
+    });
+    this.ui.imageViewerClose.addEventListener("click", () => this.closeImageViewer());
+    this.ui.imageViewer.addEventListener("click", (event) => {
+      if (event.target === this.ui.imageViewer) this.closeImageViewer();
+    });
+    this.ui.imageViewer.addEventListener("close", () => {
+      this.ui.imageViewerImage.removeAttribute("src");
+    });
   }
 
   setMode(mediaType, refresh = true) {
@@ -120,27 +136,46 @@ export class TaskBoard {
     this.ui.resultVideo.removeAttribute("src");
   }
 
+  openImageViewer() {
+    const src = this.ui.resultImage.getAttribute("src");
+    if (!src || this.ui.imageViewer.open) return;
+    this.ui.imageViewerImage.src = src;
+    this.ui.imageViewer.showModal();
+  }
+
+  closeImageViewer() {
+    if (this.ui.imageViewer.open) this.ui.imageViewer.close();
+  }
+
   show(task) {
     if (!task) return;
     const resultUrl = this.normalizeUrl(task.result_url);
     const mediaLabel = this.mediaType === "image" ? "图片" : "视频";
+    const resultMedia = this.mediaType === "image" ? this.ui.resultImage : this.ui.resultVideo;
+    const preserveResultMedia = (
+      task.status === "succeeded"
+      && Boolean(resultUrl)
+      && resultMedia.getAttribute("src") === resultUrl
+    );
     this.ui.resultTitle.textContent = this.modelSummary(task.model);
     this.ui.resultStage.classList.toggle("portrait-stage", /-9x16(?:-|$)/.test(String(task.model || "")));
     this.ui.elapsedTime.textContent = this.elapsedLabel(task);
     this.setStatus(this.statusClass(task.status), this.statusLabel(task));
-    this.resetMedia();
+    if (!preserveResultMedia) this.resetMedia();
     this.ui.emptyState.hidden = false;
 
     if (task.status === "succeeded" && resultUrl) {
       this.setProgress(100, "生成完成", `${mediaLabel}已保存到服务器`);
       this.ui.emptyState.hidden = true;
       if (this.mediaType === "image") {
-        this.ui.resultImage.src = resultUrl;
+        if (!preserveResultMedia) this.ui.resultImage.src = resultUrl;
         this.ui.resultImage.hidden = false;
       } else {
-        this.ui.resultVideo.src = resultUrl;
+        if (!preserveResultMedia) {
+          this.ui.resultVideo.src = resultUrl;
+          this.ui.resultVideo.load();
+        }
         this.ui.resultVideo.hidden = false;
-        this.ui.resultVideo.load();
       }
       this.ui.downloadBtn.href = resultUrl;
       this.ui.downloadBtn.hidden = false;

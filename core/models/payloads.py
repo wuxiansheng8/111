@@ -4,6 +4,15 @@ import time
 from typing import Optional
 
 
+AUTO_IMAGE_SIZE = {"width": -1000, "height": -1000}
+
+
+def resolution_square_size(output_resolution: str = "2K") -> dict:
+    level = str(output_resolution or "2K").upper()
+    pixels = {"1K": 1024, "2K": 2048, "4K": 4096}.get(level, 2048)
+    return {"width": pixels, "height": pixels}
+
+
 def size_from_ratio(ratio: str, output_resolution: str = "2K") -> dict:
     level = (output_resolution or "2K").upper()
     if level == "1K":
@@ -137,11 +146,16 @@ def build_image_payload_candidates(
 ) -> list[dict]:
     normalized_ratio = str(aspect_ratio or "").strip().lower()
     effective_ratio = normalized_ratio or "1:1"
+    is_auto_ratio = normalized_ratio == "auto"
     if str(upstream_model_id or "").strip().lower() == "gpt-image":
         effective_detail_level = detail_level
         if effective_detail_level is None:
             effective_detail_level = gpt_image_detail_level_from_quality(quality_level)
-        pixel_size = gpt_image_pixels_from_ratio(effective_ratio, output_resolution)
+        pixel_size = (
+            dict(AUTO_IMAGE_SIZE)
+            if is_auto_ratio
+            else gpt_image_pixels_from_ratio(effective_ratio, output_resolution)
+        )
         if pixel_size is None:
             raise ValueError(f"unsupported gpt-image ratio: {effective_ratio}")
         base_payload = {
@@ -156,9 +170,11 @@ def build_image_payload_candidates(
                 "module": "text2image",
                 "submodule": "ff-image-generate",
             },
-            "modelSpecificPayload": {
-                "size": gpt_image_size_string(pixel_size),
-            },
+            "modelSpecificPayload": (
+                {"size": "auto"}
+                if is_auto_ratio
+                else {"size": gpt_image_size_string(pixel_size)}
+            ),
             "outputResolution": str(output_resolution or "2K").upper(),
             "generationSettings": {
                 "detailLevel": int(effective_detail_level),
@@ -172,7 +188,9 @@ def build_image_payload_candidates(
         subject_reference["referenceBlobs"] = [
             {"id": img_id, "usage": "subject"} for img_id in source_image_ids
         ]
-        subject_reference["modelSpecificPayload"] = {}
+        subject_reference["modelSpecificPayload"] = (
+            {"size": "auto"} if is_auto_ratio else {}
+        )
 
         reference_image = dict(base_payload)
         reference_image["generationMetadata"] = {
@@ -195,7 +213,11 @@ def build_image_payload_candidates(
         "modelVersion": upstream_model_version,
         "n": 1,
         "prompt": prompt,
-        "size": size_from_ratio(effective_ratio, output_resolution),
+        "size": (
+            resolution_square_size(output_resolution)
+            if is_auto_ratio
+            else size_from_ratio(effective_ratio, output_resolution)
+        ),
         "seeds": [int(time.time()) % 999999],
         "groundSearch": bool(ground_search),
         "skipCai": False,
@@ -208,7 +230,7 @@ def build_image_payload_candidates(
             "parameters": {"addWatermark": False},
         },
     }
-    if normalized_ratio and normalized_ratio != "auto":
+    if normalized_ratio:
         base_payload["modelSpecificPayload"]["aspectRatio"] = normalized_ratio
 
     if not source_image_ids:

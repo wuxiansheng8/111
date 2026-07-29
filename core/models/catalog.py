@@ -28,6 +28,7 @@ SEEDANCE_RATIO_SUFFIX_MAP = {
     "9:16": "9x16",
 }
 NANO_BANANA2_RATIO_SUFFIX_MAP = {
+    "auto": "auto",
     **RATIO_SUFFIX_MAP,
     "21:9": "21x9",
     "3:2": "3x2",
@@ -40,6 +41,7 @@ NANO_BANANA2_RATIO_SUFFIX_MAP = {
     "8:1": "8x1",
 }
 GPT_IMAGE_RATIO_SUFFIX_MAP = {
+    "auto": "auto",
     "1:1": "1x1",
     "5:4": "5x4",
     "9:16": "9x16",
