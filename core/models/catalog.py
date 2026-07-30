@@ -273,9 +273,10 @@ for engine, version, prefix, label in (
     for dur in range(4, 16):
         for ratio, suffix in SEEDANCE_RATIO_SUFFIX_MAP.items():
             for resolution in resolutions:
-                resolution_suffix = "" if resolution == "720p" else f"-{resolution}"
+                # Keep the resolution explicit in canonical Seedance IDs.
+                resolution_suffix = f"-{resolution}"
                 model_id = f"{prefix}-{dur}s-{suffix}{resolution_suffix}"
-                VIDEO_MODEL_CATALOG[model_id] = {
+                model_conf = {
                     "engine": engine,
                     "upstream_model": f"ugs:video:seedance@{version}",
                     "upstream_model_id": "seedance",
@@ -293,3 +294,11 @@ for engine, version, prefix, label in (
                         f"({dur}s {ratio} {resolution})"
                     ),
                 }
+                VIDEO_MODEL_CATALOG[model_id] = model_conf
+                if resolution == "720p":
+                    # Accept IDs emitted by older clients without exposing
+                    # them as separate models in the public catalog.
+                    legacy_model_id = f"{prefix}-{dur}s-{suffix}"
+                    legacy_conf = dict(model_conf)
+                    legacy_conf["hidden"] = True
+                    VIDEO_MODEL_CATALOG[legacy_model_id] = legacy_conf

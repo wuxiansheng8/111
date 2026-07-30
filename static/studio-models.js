@@ -1,22 +1,24 @@
 export const videoModelProfiles = {
   "seedance-standard": {
-    label: "Seedance 2.0 标准版",
+    label: "Seedance 2.0 标准版（720P / 1080P）",
     prefix: "firefly-seedance2",
     durations: Array.from({ length: 12 }, (_, index) => index + 4),
     ratios: ["16:9", "9:16"],
     resolutions: ["720p", "1080p"],
     implicitResolution: "720p",
+    explicitResolution: true,
     supportsMedia: true,
     supportsNegativePrompt: true,
     limits: { image: 9, video: 3, audio: 3, total: 12 },
   },
   "seedance-fast": {
-    label: "Seedance 2.0 Fast",
+    label: "Seedance 2.0 Fast（720P）",
     prefix: "firefly-seedance2-fast",
     durations: Array.from({ length: 12 }, (_, index) => index + 4),
     ratios: ["16:9", "9:16"],
     resolutions: ["720p"],
     implicitResolution: "720p",
+    explicitResolution: true,
     supportsMedia: true,
     supportsNegativePrompt: true,
     limits: { image: 9, video: 3, audio: 3, total: 12 },
@@ -100,7 +102,7 @@ export function buildModelId(mediaType, profile, state) {
     }
     return `${profile.prefix}-${state.resolution.toLowerCase()}-${ratioSuffix}`;
   }
-  const resolutionSuffix = state.resolution !== profile.implicitResolution
+  const resolutionSuffix = profile.explicitResolution || state.resolution !== profile.implicitResolution
     ? `-${state.resolution}`
     : "";
   return `${profile.prefix}-${state.duration}s-${ratioSuffix}${resolutionSuffix}`;
