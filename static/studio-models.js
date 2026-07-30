@@ -72,6 +72,7 @@ export const imageModelProfiles = {
     resolutions: ["1K", "2K", "4K"],
     ratios: ["auto", "1:1", "21:9", "16:9", "3:2", "4:3", "5:4", "4:5", "3:4", "2:3", "9:16"],
     qualities: ["low", "medium", "high"],
+    automaticResolution: true,
     supportsGroundSearch: false,
     defaultQuality: "medium",
     supportsMedia: false,
@@ -94,6 +95,9 @@ export const sizeLimits = {
 export function buildModelId(mediaType, profile, state) {
   const ratioSuffix = state.ratio.replace(":", "x");
   if (mediaType === "image") {
+    if (profile.automaticResolution && state.ratio === "auto") {
+      return `${profile.prefix}-auto`;
+    }
     return `${profile.prefix}-${state.resolution.toLowerCase()}-${ratioSuffix}`;
   }
   const resolutionSuffix = state.resolution !== profile.implicitResolution
@@ -108,6 +112,9 @@ export function taskModelSummary(model) {
   const imageProfile = images.find((item) => value.startsWith(`${item.prefix}-`));
   if (imageProfile) {
     const suffix = value.slice(imageProfile.prefix.length + 1);
+    if (imageProfile.automaticResolution && suffix === "auto") {
+      return `${imageProfile.label} · 自动`;
+    }
     const match = suffix.match(/^(1k|2k|4k)-(auto|(\d+)x(\d+))$/i);
     if (!match) return imageProfile.label;
     const ratio = match[2].toLowerCase() === "auto" ? "自动" : `${match[3]}:${match[4]}`;

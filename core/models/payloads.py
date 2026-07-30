@@ -3,10 +3,6 @@ from __future__ import annotations
 import time
 from typing import Optional
 
-
-AUTO_IMAGE_SIZE = {"width": -1000, "height": -1000}
-
-
 def resolution_square_size(output_resolution: str = "2K") -> dict:
     level = str(output_resolution or "2K").upper()
     pixels = {"1K": 1024, "2K": 2048, "4K": 4096}.get(level, 2048)
@@ -152,11 +148,11 @@ def build_image_payload_candidates(
         if effective_detail_level is None:
             effective_detail_level = gpt_image_detail_level_from_quality(quality_level)
         pixel_size = (
-            dict(AUTO_IMAGE_SIZE)
+            None
             if is_auto_ratio
             else gpt_image_pixels_from_ratio(effective_ratio, output_resolution)
         )
-        if pixel_size is None:
+        if not is_auto_ratio and pixel_size is None:
             raise ValueError(f"unsupported gpt-image ratio: {effective_ratio}")
         base_payload = {
             "modelId": upstream_model_id,
@@ -175,12 +171,13 @@ def build_image_payload_candidates(
                 if is_auto_ratio
                 else {"size": gpt_image_size_string(pixel_size)}
             ),
-            "outputResolution": str(output_resolution or "2K").upper(),
             "generationSettings": {
                 "detailLevel": int(effective_detail_level),
             },
         }
-        base_payload["size"] = pixel_size
+        if pixel_size is not None:
+            base_payload["size"] = pixel_size
+            base_payload["outputResolution"] = str(output_resolution or "2K").upper()
         if not source_image_ids:
             return [base_payload]
 
@@ -230,7 +227,7 @@ def build_image_payload_candidates(
             "parameters": {"addWatermark": False},
         },
     }
-    if normalized_ratio:
+    if normalized_ratio and normalized_ratio != "auto":
         base_payload["modelSpecificPayload"]["aspectRatio"] = normalized_ratio
 
     if not source_image_ids:

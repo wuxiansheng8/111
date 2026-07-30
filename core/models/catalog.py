@@ -41,7 +41,6 @@ NANO_BANANA2_RATIO_SUFFIX_MAP = {
     "8:1": "8x1",
 }
 GPT_IMAGE_RATIO_SUFFIX_MAP = {
-    "auto": "auto",
     "1:1": "1x1",
     "5:4": "5x4",
     "9:16": "9x16",
@@ -90,6 +89,14 @@ def _register_gpt_image_family() -> None:
                 "aspect_ratio": ratio,
                 "description": f"Firefly GPT Image ({res.upper()} {ratio})",
             }
+    MODEL_CATALOG["firefly-gpt-image-auto"] = {
+        "upstream_model": "openai:firefly:gpt-image",
+        "upstream_model_id": "gpt-image",
+        "upstream_model_version": "2",
+        "output_resolution": "AUTO",
+        "aspect_ratio": "auto",
+        "description": "Firefly GPT Image (automatic size)",
+    }
 
 
 _register_nano_banana_family(

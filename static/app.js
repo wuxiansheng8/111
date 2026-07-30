@@ -1,4 +1,4 @@
-import { buildModelId, modelProfiles, sizeLimits, taskModelSummary } from "./studio-models.js?v=20260729-4";
+import { buildModelId, modelProfiles, sizeLimits, taskModelSummary } from "./studio-models.js?v=20260730-1";
 import { estimateCreditCost } from "./studio-credit-costs.js?v=20260729-1";
 import { TaskBoard } from "./task-board.js?v=20260729-5";
 import { createMentionId, insertMention, mentionLabel, mentionToken, reindexMediaMentions } from "./media-references.js?v=20260729-6";
@@ -115,6 +115,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function modelId() { return buildModelId(state.mediaType, activeProfile(), draft()); }
 
+  function usesAutomaticResolution(profile = activeProfile()) {
+    return state.mediaType === "image"
+      && profile.automaticResolution
+      && draft().ratio === "auto";
+  }
+
   function activeLimits() {
     const profile = activeProfile();
     return profile.limitsByReferenceMode?.[draft().referenceMode] || profile.limits;
@@ -188,14 +194,21 @@ document.addEventListener("DOMContentLoaded", () => {
     const profile = activeProfile();
     if (!profile.ratios.includes(draft().ratio)) draft().ratio = profile.ratios[0];
     if (!profile.resolutions.includes(draft().resolution)) draft().resolution = profile.resolutions[0];
+    const automaticResolution = usesAutomaticResolution(profile);
     renderOptions(
       ui.ratio,
       profile.ratios,
       draft().ratio,
       (value) => value === "auto" ? "自动" : value,
     );
-    renderOptions(ui.resolution, profile.resolutions, draft().resolution);
-    ui.resolution.disabled = profile.resolutions.length === 1;
+    const resolutionOptions = automaticResolution ? ["auto"] : profile.resolutions;
+    renderOptions(
+      ui.resolution,
+      resolutionOptions,
+      automaticResolution ? "auto" : draft().resolution,
+      (value) => value === "auto" ? "自动" : value,
+    );
+    ui.resolution.disabled = automaticResolution || profile.resolutions.length === 1;
 
     const isImage = state.mediaType === "image";
     ui.durationRow.hidden = isImage;
@@ -240,11 +253,12 @@ document.addEventListener("DOMContentLoaded", () => {
   function updateSummary() {
     const profile = activeProfile();
     if (state.mediaType === "image") {
+      const resolution = usesAutomaticResolution(profile) ? "自动" : draft().resolution;
       const quality = profile.qualities?.length
         ? ` · ${{ low: "低", medium: "中", high: "高" }[draft().quality]}质量`
         : "";
       const search = profile.supportsGroundSearch && draft().groundSearch ? " · Google 搜索" : "";
-      ui.requestSummary.textContent = `${profile.label} · ${draft().resolution} · ${draft().ratio}${quality}${search}`;
+      ui.requestSummary.textContent = `${profile.label} · ${resolution} · ${draft().ratio}${quality}${search}`;
     } else {
       const audioLabel = ui.generateAudio.checked ? "生成音频" : "静音";
       ui.requestSummary.textContent = `${profile.label} · ${draft().duration} 秒 · ${draft().ratio} · ${draft().resolution} · ${audioLabel}`;
@@ -471,7 +485,7 @@ document.addEventListener("DOMContentLoaded", () => {
     renderControls();
   }));
   ui.model.addEventListener("change", () => { draft().model = ui.model.value; renderControls(); });
-  ui.ratio.addEventListener("change", () => { draft().ratio = ui.ratio.value; updateSummary(); });
+  ui.ratio.addEventListener("change", () => { draft().ratio = ui.ratio.value; renderControls(); });
   ui.duration.addEventListener("change", () => { draft().duration = Number(ui.duration.value); updateSummary(); });
   ui.resolution.addEventListener("change", () => { draft().resolution = ui.resolution.value; updateSummary(); });
   ui.quality.addEventListener("change", () => { draft().quality = ui.quality.value; updateSummary(); });
