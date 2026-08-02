@@ -9,6 +9,7 @@ from typing import Any, Callable, Optional
 from urllib.parse import quote, urlparse
 
 import requests
+from requests import exceptions as request_exceptions
 
 from core.config_mgr import config_manager
 from core.models import build_image_payload_candidates
@@ -376,19 +377,19 @@ class AdobeClient:
                     timeout=60,
                     proxies=self._requests_proxies(),
                 )
-            except requests.Timeout as exc:
+            except request_exceptions.Timeout as exc:
                 raise UpstreamTemporaryError(
                     f"upstream timeout: {exc}", error_type="timeout"
                 )
-            except requests.ProxyError as exc:
+            except request_exceptions.ProxyError as exc:
                 raise UpstreamTemporaryError(
                     f"upstream proxy error: {exc}", error_type="proxy"
                 )
-            except requests.ConnectionError as exc:
+            except request_exceptions.ConnectionError as exc:
                 raise UpstreamTemporaryError(
                     f"upstream connection error: {exc}", error_type="connection"
                 )
-            except requests.RequestException as exc:
+            except request_exceptions.RequestException as exc:
                 raise UpstreamTemporaryError(
                     f"upstream request error: {exc}", error_type="network"
                 )
@@ -409,21 +410,21 @@ class AdobeClient:
                     timeout=60,
                     proxies=self._requests_proxies(),
                 )
-            except requests.Timeout as exc:
+            except request_exceptions.Timeout as exc:
                 raise UpstreamTemporaryError(
                     f"upstream timeout: {exc}", status_code=451, error_type="timeout"
                 )
-            except requests.ProxyError as exc:
+            except request_exceptions.ProxyError as exc:
                 raise UpstreamTemporaryError(
                     f"upstream proxy error: {exc}", status_code=451, error_type="proxy"
                 )
-            except requests.ConnectionError as exc:
+            except request_exceptions.ConnectionError as exc:
                 raise UpstreamTemporaryError(
                     f"upstream connection error: {exc}",
                     status_code=451,
                     error_type="connection",
                 )
-            except requests.RequestException as exc:
+            except request_exceptions.RequestException as exc:
                 raise UpstreamTemporaryError(
                     f"upstream request error: {exc}",
                     status_code=451,
@@ -442,19 +443,19 @@ class AdobeClient:
                     timeout=60,
                     proxies=self._requests_proxies(),
                 )
-            except requests.Timeout as exc:
+            except request_exceptions.Timeout as exc:
                 raise UpstreamTemporaryError(
                     f"upstream timeout: {exc}", error_type="timeout"
                 )
-            except requests.ProxyError as exc:
+            except request_exceptions.ProxyError as exc:
                 raise UpstreamTemporaryError(
                     f"upstream proxy error: {exc}", error_type="proxy"
                 )
-            except requests.ConnectionError as exc:
+            except request_exceptions.ConnectionError as exc:
                 raise UpstreamTemporaryError(
                     f"upstream connection error: {exc}", error_type="connection"
                 )
-            except requests.RequestException as exc:
+            except request_exceptions.RequestException as exc:
                 raise UpstreamTemporaryError(
                     f"upstream request error: {exc}", error_type="network"
                 )
@@ -479,19 +480,19 @@ class AdobeClient:
                     timeout=60,
                     proxies=self._requests_proxies(),
                 )
-            except requests.Timeout as exc:
+            except request_exceptions.Timeout as exc:
                 raise UpstreamTemporaryError(
                     f"upstream timeout: {exc}", error_type="timeout"
                 )
-            except requests.ProxyError as exc:
+            except request_exceptions.ProxyError as exc:
                 raise UpstreamTemporaryError(
                     f"upstream proxy error: {exc}", error_type="proxy"
                 )
-            except requests.ConnectionError as exc:
+            except request_exceptions.ConnectionError as exc:
                 raise UpstreamTemporaryError(
                     f"upstream connection error: {exc}", error_type="connection"
                 )
-            except requests.RequestException as exc:
+            except request_exceptions.RequestException as exc:
                 raise UpstreamTemporaryError(
                     f"upstream request error: {exc}", error_type="network"
                 )
@@ -515,19 +516,19 @@ class AdobeClient:
                     timeout=timeout,
                     proxies=self._requests_proxies(),
                 )
-            except requests.Timeout as exc:
+            except request_exceptions.Timeout as exc:
                 raise UpstreamTemporaryError(
                     f"upstream timeout: {exc}", error_type="timeout"
                 )
-            except requests.ProxyError as exc:
+            except request_exceptions.ProxyError as exc:
                 raise UpstreamTemporaryError(
                     f"upstream proxy error: {exc}", error_type="proxy"
                 )
-            except requests.ConnectionError as exc:
+            except request_exceptions.ConnectionError as exc:
                 raise UpstreamTemporaryError(
                     f"upstream connection error: {exc}", error_type="connection"
                 )
-            except requests.RequestException as exc:
+            except request_exceptions.RequestException as exc:
                 raise UpstreamTemporaryError(
                     f"upstream request error: {exc}", error_type="network"
                 )
@@ -551,19 +552,19 @@ class AdobeClient:
                     timeout=timeout,
                     proxies=self._requests_proxies(),
                 )
-            except requests.Timeout as exc:
+            except request_exceptions.Timeout as exc:
                 raise UpstreamTemporaryError(
                     f"upstream timeout: {exc}", error_type="timeout"
                 )
-            except requests.ProxyError as exc:
+            except request_exceptions.ProxyError as exc:
                 raise UpstreamTemporaryError(
                     f"upstream proxy error: {exc}", error_type="proxy"
                 )
-            except requests.ConnectionError as exc:
+            except request_exceptions.ConnectionError as exc:
                 raise UpstreamTemporaryError(
                     f"upstream connection error: {exc}", error_type="connection"
                 )
-            except requests.RequestException as exc:
+            except request_exceptions.RequestException as exc:
                 raise UpstreamTemporaryError(
                     f"upstream request error: {exc}", error_type="network"
                 )
@@ -621,17 +622,17 @@ class AdobeClient:
                             continue
                         f.write(chunk)
                         total += len(chunk)
-        except requests.Timeout as exc:
+        except request_exceptions.Timeout as exc:
             raise UpstreamTemporaryError(f"upstream timeout: {exc}", error_type="timeout")
-        except requests.ProxyError as exc:
+        except request_exceptions.ProxyError as exc:
             raise UpstreamTemporaryError(
                 f"upstream proxy error: {exc}", error_type="proxy"
             )
-        except requests.ConnectionError as exc:
+        except request_exceptions.ConnectionError as exc:
             raise UpstreamTemporaryError(
                 f"upstream connection error: {exc}", error_type="connection"
             )
-        except requests.RequestException as exc:
+        except request_exceptions.RequestException as exc:
             raise UpstreamTemporaryError(f"upstream request error: {exc}", error_type="network")
         return total
 

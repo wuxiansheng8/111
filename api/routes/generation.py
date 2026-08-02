@@ -826,19 +826,24 @@ def build_generation_router(
                     status_code=409,
                     detail="Kling entity belongs to a different queued account",
                 )
-            input_images = load_input_images(data.get("messages") or [])
-            input_media = (
-                load_input_media(data.get("messages") or [])
-                if video_engine == "seedance2"
-                else [
-                    LoadedMedia(
-                        content=image_bytes,
-                        mime_type=image_mime,
-                        kind="image",
-                    )
-                    for image_bytes, image_mime in input_images
-                ]
-            )
+            messages = data.get("messages") or []
+            input_images = []
+            input_media = []
+            if is_video_model:
+                if video_engine == "seedance2":
+                    input_media = load_input_media(messages)
+                else:
+                    input_images = load_input_images(messages)
+                    input_media = [
+                        LoadedMedia(
+                            content=image_bytes,
+                            mime_type=image_mime,
+                            kind="image",
+                        )
+                        for image_bytes, image_mime in input_images
+                    ]
+            else:
+                input_images = load_input_images(messages)
             if video_engine == "seedance2" and (
                 len(input_media) > 2
                 or any(media.kind != "image" for media in input_media)
