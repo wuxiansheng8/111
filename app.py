@@ -68,6 +68,12 @@ DATA_DIR = BASE_DIR / "data"
 GENERATED_DIR = DATA_DIR / "generated"
 GENERATED_DIR.mkdir(parents=True, exist_ok=True)
 
+INPUT_MEDIA_MAX_BYTES = {
+    "image": 48 * 1024 * 1024,
+    "video": 200 * 1024 * 1024,
+    "audio": 50 * 1024 * 1024,
+}
+
 _GENERATED_RECONCILE_INTERVAL_SEC = 300
 _generated_storage_lock = threading.Lock()
 _generated_prune_lock = threading.Lock()
@@ -1003,8 +1009,8 @@ def _load_input_images(messages) -> list[tuple[bytes, str]]:
 
         if not image_bytes:
             raise HTTPException(status_code=400, detail="image_url is empty")
-        if len(image_bytes) > 10 * 1024 * 1024:
-            raise HTTPException(status_code=400, detail="image too large, max 10MB")
+        if len(image_bytes) > INPUT_MEDIA_MAX_BYTES["image"]:
+            raise HTTPException(status_code=400, detail="image too large, max 48MB")
 
         loaded.append((image_bytes, _normalize_image_mime(mime_type)))
 
@@ -1018,11 +1024,6 @@ def _load_input_media(messages) -> list[LoadedMedia]:
         "image": "image/jpeg",
         "video": "video/mp4",
         "audio": "audio/mpeg",
-    }
-    max_sizes = {
-        "image": 10 * 1024 * 1024,
-        "video": 200 * 1024 * 1024,
-        "audio": 50 * 1024 * 1024,
     }
     allowed_mimes = {
         "image": {"image/jpeg", "image/jpg", "image/png", "image/webp"},
@@ -1075,8 +1076,8 @@ def _load_input_media(messages) -> list[LoadedMedia]:
             )
         if not media_bytes:
             raise HTTPException(status_code=400, detail=f"{media_type}_url is empty")
-        if len(media_bytes) > max_sizes[media_type]:
-            max_mb = max_sizes[media_type] // (1024 * 1024)
+        if len(media_bytes) > INPUT_MEDIA_MAX_BYTES[media_type]:
+            max_mb = INPUT_MEDIA_MAX_BYTES[media_type] // (1024 * 1024)
             raise HTTPException(
                 status_code=400,
                 detail=f"{media_type} too large, max {max_mb}MB",

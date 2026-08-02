@@ -67,6 +67,30 @@ class GenerationTaskQueue:
                 daemon=True,
             ).start()
 
+    @staticmethod
+    def _display_options_from_payload(payload: dict) -> dict:
+        quality = str(payload.get("quality") or "").strip().lower()
+        if quality not in {"low", "medium", "high"}:
+            quality = ""
+
+        raw_ground_search = payload.get(
+            "ground_search",
+            payload.get("groundSearch", False),
+        )
+        if isinstance(raw_ground_search, str):
+            ground_search = raw_ground_search.strip().lower() in {
+                "1", "true", "yes", "on",
+            }
+        else:
+            ground_search = bool(raw_ground_search)
+
+        options = {}
+        if quality:
+            options["quality"] = quality
+        if ground_search:
+            options["ground_search"] = True
+        return options
+
     def submit(self, payload: dict, public_context: Optional[dict] = None) -> dict:
         task_id = uuid.uuid4().hex
         now = time.time()
@@ -77,6 +101,7 @@ class GenerationTaskQueue:
             "progress": 0.0,
             "model": str(payload.get("model") or ""),
             "media_type": self._media_type,
+            "display_options": self._display_options_from_payload(payload),
             "prompt_preview": prompt[:120],
             "result_url": None,
             "error": None,
@@ -162,6 +187,7 @@ class GenerationTaskQueue:
             task = dict(item)
             task_id = str(task["id"])
             task.setdefault("media_type", self._media_type)
+            task.setdefault("display_options", {})
             if task.get("status") in {"queued", "running"}:
                 if self._payload_path(task_id).exists():
                     task.update(

@@ -1,6 +1,6 @@
 import { buildModelId, modelProfiles, sizeLimits, taskModelSummary } from "./studio-models.js?v=20260730-1";
 import { estimateCreditCost } from "./studio-credit-costs.js?v=20260729-1";
-import { TaskBoard } from "./task-board.js?v=20260729-5";
+import { TaskBoard } from "./task-board.js?v=20260801-1";
 import { createMentionId, insertMention, mentionLabel, mentionToken, reindexMediaMentions } from "./media-references.js?v=20260729-6";
 
 document.addEventListener("DOMContentLoaded", () => {

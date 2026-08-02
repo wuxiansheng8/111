@@ -89,7 +89,7 @@ export const modelProfiles = {
 };
 
 export const sizeLimits = {
-  image: 10 * 1024 * 1024,
+  image: 48 * 1024 * 1024,
   video: 200 * 1024 * 1024,
   audio: 50 * 1024 * 1024,
 };

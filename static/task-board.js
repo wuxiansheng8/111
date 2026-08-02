@@ -117,6 +117,15 @@ export class TaskBoard {
     return { succeeded: "success", queued: "queued", running: "running" }[status] || "failed";
   }
 
+  displayOptionsSummary(task) {
+    const options = task?.display_options || {};
+    const parts = [];
+    const qualityLabels = { low: "低质量", medium: "中质量", high: "高质量" };
+    if (qualityLabels[options.quality]) parts.push(qualityLabels[options.quality]);
+    if (options.ground_search === true) parts.push("Google 搜索");
+    return parts.join(" · ");
+  }
+
   normalizeUrl(value) {
     try {
       const url = new URL(String(value || ""), window.location.origin);
@@ -283,9 +292,17 @@ export class TaskBoard {
       info.className = "task-info";
       const model = document.createElement("strong");
       model.textContent = this.modelSummary(task.model);
+      info.appendChild(model);
+      const displayOptions = this.displayOptionsSummary(task);
+      if (displayOptions) {
+        const options = document.createElement("span");
+        options.className = "task-display-options";
+        options.textContent = displayOptions;
+        info.appendChild(options);
+      }
       const prompt = document.createElement("span");
       prompt.textContent = task.prompt_preview || "无提示词摘要";
-      info.append(model, prompt);
+      info.appendChild(prompt);
       const actions = document.createElement("div");
       actions.className = "task-actions";
       if (task.status === "queued") {
