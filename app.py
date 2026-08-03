@@ -881,7 +881,10 @@ def _run_with_token_retries(
         if isinstance(last_exc, UpstreamTemporaryError):
             raise HTTPException(
                 status_code=503,
-                detail="Upstream is temporarily unavailable. Please retry later.",
+                detail=(
+                    f"Upstream temporarily unavailable after {attempt} attempts: "
+                    f"{last_exc}"
+                ),
             )
         raise last_exc
     raise HTTPException(

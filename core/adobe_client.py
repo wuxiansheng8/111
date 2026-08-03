@@ -127,8 +127,8 @@ class AdobeClient:
         self.generate_timeout = 300
         self.retry_enabled = True
         self.retry_max_attempts = 3
-        self.retry_backoff_seconds = 1.0
-        self.retry_on_status_codes = [429, 451, 500, 502, 503, 504]
+        self.retry_backoff_seconds = 10.0
+        self.retry_on_status_codes = [408, 429, 451, 500, 502, 503, 504]
         self.retry_on_error_types = {"timeout", "connection", "proxy"}
         self.token_rotation_strategy = "round_robin"
         self.gpt_image_quality = "low"
@@ -186,13 +186,13 @@ class AdobeClient:
         self.retry_max_attempts = max(1, min(attempts, 10))
 
         try:
-            backoff = float(cfg.get("retry_backoff_seconds", 1.0))
+            backoff = float(cfg.get("retry_backoff_seconds", 10.0))
         except Exception:
-            backoff = 1.0
+            backoff = 10.0
         self.retry_backoff_seconds = max(0.0, min(backoff, 30.0))
 
         status_codes_raw = cfg.get(
-            "retry_on_status_codes", [429, 451, 500, 502, 503, 504]
+            "retry_on_status_codes", [408, 429, 451, 500, 502, 503, 504]
         )
         parsed_status_codes: list[int] = []
         if isinstance(status_codes_raw, list):
@@ -204,6 +204,7 @@ class AdobeClient:
                 if 100 <= val <= 599:
                     parsed_status_codes.append(val)
         self.retry_on_status_codes = sorted(set(parsed_status_codes)) or [
+            408,
             429,
             451,
             500,
@@ -246,6 +247,14 @@ class AdobeClient:
             return 0.0
         safe_attempt = max(1, int(attempt))
         return min(30.0, base * (2 ** (safe_attempt - 1)))
+
+    @staticmethod
+    def _is_temporary_status(status_code: int) -> bool:
+        try:
+            code = int(status_code)
+        except (TypeError, ValueError):
+            return False
+        return code in {408, 429, 451} or code >= 500
 
     def should_retry_temporary_error(self, exc: UpstreamTemporaryError) -> bool:
         if not self.retry_enabled:
@@ -583,7 +592,7 @@ class AdobeClient:
         if resp.status_code in (401, 403):
             raise AuthError("Token invalid or expired")
         if resp.status_code != 200:
-            if resp.status_code in (429, 451) or resp.status_code >= 500:
+            if self._is_temporary_status(resp.status_code):
                 raise UpstreamTemporaryError(
                     f"upstream get failed: {resp.status_code} {resp.text[:300]}",
                     status_code=resp.status_code,
@@ -671,7 +680,7 @@ class AdobeClient:
         if resp.status_code in (401, 403):
             raise AuthError("Token invalid or expired")
         if resp.status_code != 200:
-            if resp.status_code in (429, 451) or resp.status_code >= 500:
+            if self._is_temporary_status(resp.status_code):
                 raise UpstreamTemporaryError(
                     f"upload {kind} failed: {resp.status_code} {resp.text[:300]}",
                     status_code=resp.status_code,
@@ -745,7 +754,7 @@ class AdobeClient:
         if resp.status_code in (401, 403):
             raise AuthError("Token invalid or expired")
         if resp.status_code not in (200, 201):
-            if resp.status_code in (429, 451) or resp.status_code >= 500:
+            if self._is_temporary_status(resp.status_code):
                 raise UpstreamTemporaryError(
                     f"create entity failed: {resp.status_code} {resp.text[:300]}",
                     status_code=resp.status_code,
@@ -800,7 +809,7 @@ class AdobeClient:
         if resp.status_code in (401, 403):
             raise AuthError("Token invalid or expired")
         if resp.status_code not in (200, 201):
-            if resp.status_code in (429, 451) or resp.status_code >= 500:
+            if self._is_temporary_status(resp.status_code):
                 raise UpstreamTemporaryError(
                     f"upload entity image failed: {resp.status_code} {resp.text[:300]}",
                     status_code=resp.status_code,
@@ -874,7 +883,7 @@ class AdobeClient:
         if resp.status_code in (401, 403):
             raise AuthError("Token invalid or expired")
         if resp.status_code not in (200, 201):
-            if resp.status_code in (429, 451) or resp.status_code >= 500:
+            if self._is_temporary_status(resp.status_code):
                 raise UpstreamTemporaryError(
                     f"register entity resources failed: {resp.status_code} {resp.text[:300]}",
                     status_code=resp.status_code,
@@ -946,7 +955,7 @@ class AdobeClient:
             raise AuthError("Token invalid or expired")
         if resp.status_code in (200, 202, 204):
             return True
-        if resp.status_code in (429, 451) or resp.status_code >= 500:
+        if self._is_temporary_status(resp.status_code):
             raise UpstreamTemporaryError(
                 f"delete entity failed: {resp.status_code} {resp.text[:300]}",
                 status_code=resp.status_code,
@@ -1439,7 +1448,7 @@ class AdobeClient:
             )
 
         if submit_resp.status_code != 200:
-            if submit_resp.status_code in (429, 451) or submit_resp.status_code >= 500:
+            if self._is_temporary_status(submit_resp.status_code):
                 raise UpstreamTemporaryError(
                     f"video submit failed: {submit_resp.status_code} {submit_resp.text[:300]}",
                     status_code=submit_resp.status_code,
@@ -1477,7 +1486,7 @@ class AdobeClient:
             if poll_resp.status_code in (401, 403):
                 raise AuthError("Token invalid or expired")
             if poll_resp.status_code != 200:
-                if poll_resp.status_code in (429, 451) or poll_resp.status_code >= 500:
+                if self._is_temporary_status(poll_resp.status_code):
                     raise UpstreamTemporaryError(
                         f"video poll failed: {poll_resp.status_code} {poll_resp.text[:300]}",
                         status_code=poll_resp.status_code,
@@ -1645,7 +1654,7 @@ class AdobeClient:
                 submit_resp.status_code,
                 submit_resp.text[:500],
             )
-            if submit_resp.status_code in (429, 451) or submit_resp.status_code >= 500:
+            if self._is_temporary_status(submit_resp.status_code):
                 raise UpstreamTemporaryError(
                     f"submit failed: {submit_resp.status_code} {submit_resp.text[:300]}",
                     status_code=submit_resp.status_code,
@@ -1692,7 +1701,7 @@ class AdobeClient:
                     poll_resp.status_code,
                     poll_resp.text[:500],
                 )
-                if poll_resp.status_code in (429, 451) or poll_resp.status_code >= 500:
+                if self._is_temporary_status(poll_resp.status_code):
                     raise UpstreamTemporaryError(
                         f"poll failed: {poll_resp.status_code} {poll_resp.text[:300]}",
                         status_code=poll_resp.status_code,
